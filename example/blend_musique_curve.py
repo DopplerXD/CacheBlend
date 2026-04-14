@@ -293,38 +293,39 @@ def main() -> None:
 
     ratios = ratio_grid()
     total_groups = len(ratios)
+    qaw_ttft_by_ratio: Dict[float, List[float]] = {r: [] for r in ratios}
+    qaw_total_by_ratio: Dict[float, List[float]] = {r: [] for r in ratios}
+    qaw_f1_by_ratio: Dict[float, List[float]] = {r: [] for r in ratios}
+    qaw_true_recompute_by_ratio: Dict[float, int] = {r: 0 for r in ratios}
+
     for group_idx, recomp_ratio in enumerate(ratios, start=1):
         print(
             f"[curve] 进行中 {group_idx}/{total_groups}, recomp_ratio={recomp_ratio:.2f}",
             flush=True,
         )
-        # 每组 ratio 重建 KV cache；仅跑 query_aware。
+
+    processed_samples = 0
+    for sample_idx, ex in enumerate(eval_dataset, start=1):
+        if processed_samples >= sample_limit:
+            break
+        processed_samples += 1
+        print(f"[curve] 样本 {processed_samples}/{sample_limit} 开始", flush=True)
+
+        answers = ex.get("answers", [])
+        doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
+        query_text = normalize_question(ex.get("question", ""))
+        final_prompt = build_final_prompt(doc_prompts, q_prompt)
+        stale_prompt = build_stale_prompt(doc_prompts, query_text)
+
+        # 每个样本单独建引擎：stale cache 仅 prefill 一次，再连续跑 14 组 ratio。
         kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
         engine = InferenceEngine(model_runner, kv_cache, logger)
+        stale_template_id = f"sample-{sample_idx}-stale-template"
 
-        qaw_ttft_list: List[float] = []
-        qaw_total_list: List[float] = []
-        qaw_f1_list: List[float] = []
-        qaw_true_recompute_count = 0
-
-        count = 0
         try:
-            for sample_idx, ex in enumerate(eval_dataset, start=1):
-                if count >= sample_limit:
-                    break
-                count += 1
-
-                answers = ex.get("answers", [])
-                doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
-                query_text = normalize_question(ex.get("question", ""))
-                final_prompt = build_final_prompt(doc_prompts, q_prompt)
-                stale_prompt = build_stale_prompt(doc_prompts, query_text)
-
-                # 每个样本只为 query_aware 准备 stale cache。
-                stale_template_id = f"r{recomp_ratio}-stale-template-{sample_idx}"
-                warm_prompt_cache(engine, kv_cache, stale_template_id, stale_prompt)
-
-                qaw_session_id = f"r{recomp_ratio}-qaw-{sample_idx}"
+            warm_prompt_cache(engine, kv_cache, stale_template_id, stale_prompt)
+            for recomp_ratio in ratios:
+                qaw_session_id = f"sample-{sample_idx}-qaw-{recomp_ratio}"
                 seed_session_cache(kv_cache, stale_template_id, qaw_session_id)
                 qaw_req = GenerateRequest(
                     session_id=qaw_session_id,
@@ -340,49 +341,52 @@ def main() -> None:
                 )
                 qaw_res = engine.generate(qaw_req)
 
-                qaw_true_recompute = (
-                    qaw_res.recompute_mode == "query_aware_recompute"
-                    and qaw_res.recomputed_tokens > 0)
-                if qaw_true_recompute:
-                    qaw_true_recompute_count += 1
-
-                qaw_ttft_list.append(qaw_res.first_token_latency_s)
-                qaw_total_list.append(qaw_res.total_latency_s)
+                qaw_ttft_by_ratio[recomp_ratio].append(qaw_res.first_token_latency_s)
+                qaw_total_by_ratio[recomp_ratio].append(qaw_res.total_latency_s)
+                if (qaw_res.recompute_mode == "query_aware_recompute"
+                        and qaw_res.recomputed_tokens > 0):
+                    qaw_true_recompute_by_ratio[recomp_ratio] += 1
 
                 qaw_f1 = max([compute_f1(qaw_res.generated_text, a, model_runner.tokenizer)
                               for a in answers]) if answers else None
                 if qaw_f1 is not None:
-                    qaw_f1_list.append(qaw_f1)
+                    qaw_f1_by_ratio[recomp_ratio].append(qaw_f1)
         finally:
             cleanup_group_runtime(kv_cache, engine)
             mem_after_cleanup = get_cuda_mem_mb()
             print(
-                f"[curve] 组完成 {group_idx}/{total_groups}, "
+                f"[curve] 样本 {processed_samples}/{sample_limit} 完成, "
                 f"已清理显存: {format_cuda_mem(mem_after_cleanup)}",
                 flush=True,
             )
 
-        # 每组 ratio 仅输出一条 run_summary，不输出 sample_result。
+    # 仍按 ratio 输出 14 条 run_summary。
+    for group_idx, recomp_ratio in enumerate(ratios, start=1):
         output_writer.append_json({
             "event": "run_summary",
             "recomp_ratio": recomp_ratio,
-            "sample_count": count,
+            "sample_count": processed_samples,
             "full_reuse_avg_ttft_s": baseline_stats["full_reuse_avg_ttft_s"],
             "kv_diff_avg_ttft_s": baseline_stats["kv_diff_avg_ttft_s"],
-            "query_aware_avg_ttft_s": _mean(qaw_ttft_list),
+            "query_aware_avg_ttft_s": _mean(qaw_ttft_by_ratio[recomp_ratio]),
             "full_prefill_avg_ttft_s": baseline_stats["full_prefill_avg_ttft_s"],
             "full_reuse_avg_total_s": baseline_stats["full_reuse_avg_total_s"],
             "kv_diff_avg_total_s": baseline_stats["kv_diff_avg_total_s"],
-            "query_aware_avg_total_s": _mean(qaw_total_list),
+            "query_aware_avg_total_s": _mean(qaw_total_by_ratio[recomp_ratio]),
             "full_prefill_avg_total_s": baseline_stats["full_prefill_avg_total_s"],
             "full_reuse_avg_f1": baseline_stats["full_reuse_avg_f1"],
             "kv_diff_avg_f1": baseline_stats["kv_diff_avg_f1"],
-            "query_aware_avg_f1": _mean(qaw_f1_list),
+            "query_aware_avg_f1": _mean(qaw_f1_by_ratio[recomp_ratio]),
             "full_prefill_avg_f1": baseline_stats["full_prefill_avg_f1"],
             "kvd_true_recompute_count": baseline_stats["kvd_true_recompute_count"],
-            "qaw_true_recompute_count": qaw_true_recompute_count,
+            "qaw_true_recompute_count": qaw_true_recompute_by_ratio[recomp_ratio],
             "ended_at": utc8_now_str(),
         })
+        print(
+            f"[curve] 组完成 {group_idx}/{total_groups}, "
+            f"run_summary 已写入, recomp_ratio={recomp_ratio:.2f}",
+            flush=True,
+        )
 
 
 if __name__ == "__main__":
