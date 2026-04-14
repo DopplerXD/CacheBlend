@@ -1,0 +1,138 @@
+2026-04-14 15:28:24 | INFO | blend_mvp | 加载 tokenizer: /root/models/Yi-6B
+2026-04-14 15:28:24 | INFO | blend_mvp | 加载模型: /root/models/Yi-6B, device=cuda, dtype=torch.bfloat16
+2026-04-14 15:28:29 | INFO | blend_mvp | 实验结构化日志文件: /root/github/CacheBlend/outputs/202604142328_blend.output
+2026-04-14 15:28:29 | INFO | blend_mvp | 实验控制台风格日志文件: /root/github/CacheBlend/outputs/202604142328_blend_console.output
+2026-04-14 15:28:29 | INFO | blend_mvp | 
+===== 样本 1 开始，chunk_num=6 =====
+2026-04-14 15:28:30 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:30 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-1, 复用前缀 token=3796, 增量 prefill token=0
+2026-04-14 15:28:31 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:31 | INFO | blend_mvp | session_id=sample-kvd-1 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:28:33 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:33 | INFO | blend_mvp | session_id=sample-qaw-1 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:28:34 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:34 | INFO | blend_mvp | sample=1 full_prefill(ttft=1.1718,total=1.3884) full_reuse(ttft=0.5991,total=0.7833,reused=3796,mode=cache_prefix_reuse) kvd(ttft=1.4796,total=1.6666,recomp=634,mode=kv_diff_recompute,true=True) qaw(ttft=0.9207,total=1.1124,recomp=634,mode=query_aware_recompute,true=True)
+2026-04-14 15:28:34 | INFO | blend_mvp | 
+===== 样本 2 开始，chunk_num=5 =====
+2026-04-14 15:28:35 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:35 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-2, 复用前缀 token=3402, 增量 prefill token=0
+2026-04-14 15:28:36 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:36 | INFO | blend_mvp | session_id=sample-kvd-2 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:28:38 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:38 | INFO | blend_mvp | session_id=sample-qaw-2 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:28:39 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:39 | INFO | blend_mvp | sample=2 full_prefill(ttft=0.6943,total=0.9124) full_reuse(ttft=0.5384,total=0.7491,reused=3402,mode=cache_prefix_reuse) kvd(ttft=1.2743,total=1.4881,recomp=571,mode=kv_diff_recompute,true=True) qaw(ttft=0.7685,total=0.9836,recomp=571,mode=query_aware_recompute,true=True)
+2026-04-14 15:28:39 | INFO | blend_mvp | 
+===== 样本 3 开始，chunk_num=5 =====
+2026-04-14 15:28:40 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:40 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-3, 复用前缀 token=3345, 增量 prefill token=0
+2026-04-14 15:28:40 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:41 | INFO | blend_mvp | session_id=sample-kvd-3 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:28:42 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:42 | INFO | blend_mvp | session_id=sample-qaw-3 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:28:43 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:43 | INFO | blend_mvp | sample=3 full_prefill(ttft=0.6922,total=0.9066) full_reuse(ttft=0.5406,total=0.7604,reused=3345,mode=cache_prefix_reuse) kvd(ttft=1.2792,total=1.5111,recomp=562,mode=kv_diff_recompute,true=True) qaw(ttft=0.7648,total=0.9791,recomp=562,mode=query_aware_recompute,true=True)
+2026-04-14 15:28:43 | INFO | blend_mvp | 
+===== 样本 4 开始，chunk_num=6 =====
+2026-04-14 15:28:44 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:44 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-reuse-template-1
+2026-04-14 15:28:44 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-4, 复用前缀 token=3814, 增量 prefill token=0
+2026-04-14 15:28:45 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:45 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-full-reuse-1
+2026-04-14 15:28:45 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-1
+2026-04-14 15:28:45 | INFO | blend_mvp | session_id=sample-kvd-4 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:28:47 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:47 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-stale-template-1
+2026-04-14 15:28:47 | INFO | blend_mvp | session_id=sample-qaw-4 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:28:48 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:48 | INFO | blend_mvp | sample=4 full_prefill(ttft=0.7815,total=0.9361) full_reuse(ttft=0.6035,total=0.7566,reused=3814,mode=cache_prefix_reuse) kvd(ttft=1.4228,total=1.5768,recomp=637,mode=kv_diff_recompute,true=True) qaw(ttft=0.8502,total=1.0046,recomp=637,mode=query_aware_recompute,true=True)
+2026-04-14 15:28:48 | INFO | blend_mvp | 
+===== 样本 5 开始，chunk_num=6 =====
+2026-04-14 15:28:49 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:49 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-1
+2026-04-14 15:28:49 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-reuse-template-2
+2026-04-14 15:28:49 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-5, 复用前缀 token=3669, 增量 prefill token=0
+2026-04-14 15:28:49 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:50 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-full-reuse-2
+2026-04-14 15:28:50 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-2
+2026-04-14 15:28:50 | INFO | blend_mvp | session_id=sample-kvd-5 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:28:51 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:51 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-stale-template-2
+2026-04-14 15:28:51 | INFO | blend_mvp | session_id=sample-qaw-5 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:28:52 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:52 | INFO | blend_mvp | sample=5 full_prefill(ttft=0.7547,total=0.7793) full_reuse(ttft=0.5499,total=0.5744,reused=3669,mode=cache_prefix_reuse) kvd(ttft=1.3643,total=1.3887,recomp=613,mode=kv_diff_recompute,true=True) qaw(ttft=0.8226,total=0.8469,recomp=613,mode=query_aware_recompute,true=True)
+2026-04-14 15:28:52 | INFO | blend_mvp | 
+===== 样本 6 开始，chunk_num=5 =====
+2026-04-14 15:28:53 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:53 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-2
+2026-04-14 15:28:53 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-reuse-template-3
+2026-04-14 15:28:53 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-6, 复用前缀 token=3746, 增量 prefill token=0
+2026-04-14 15:28:53 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:54 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-full-reuse-3
+2026-04-14 15:28:54 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-3
+2026-04-14 15:28:54 | INFO | blend_mvp | session_id=sample-kvd-6 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:28:55 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:55 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-stale-template-3
+2026-04-14 15:28:55 | INFO | blend_mvp | session_id=sample-qaw-6 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:28:56 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:56 | INFO | blend_mvp | sample=6 full_prefill(ttft=0.7560,total=0.7807) full_reuse(ttft=0.5895,total=0.6142,reused=3746,mode=cache_prefix_reuse) kvd(ttft=1.3853,total=1.4101,recomp=626,mode=kv_diff_recompute,true=True) qaw(ttft=0.8263,total=0.8509,recomp=626,mode=query_aware_recompute,true=True)
+2026-04-14 15:28:56 | INFO | blend_mvp | 
+===== 样本 7 开始，chunk_num=6 =====
+2026-04-14 15:28:57 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:57 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-3
+2026-04-14 15:28:57 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-reuse-template-4
+2026-04-14 15:28:57 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-7, 复用前缀 token=3862, 增量 prefill token=0
+2026-04-14 15:28:58 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:58 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-full-reuse-4
+2026-04-14 15:28:58 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-4
+2026-04-14 15:28:58 | INFO | blend_mvp | session_id=sample-kvd-7 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:28:59 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:28:59 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-stale-template-4
+2026-04-14 15:28:59 | INFO | blend_mvp | session_id=sample-qaw-7 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:29:00 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:29:00 | INFO | blend_mvp | sample=7 full_prefill(ttft=0.8254,total=0.8514) full_reuse(ttft=0.5974,total=0.6230,reused=3862,mode=cache_prefix_reuse) kvd(ttft=1.4580,total=1.4837,recomp=644,mode=kv_diff_recompute,true=True) qaw(ttft=0.8931,total=0.9188,recomp=644,mode=query_aware_recompute,true=True)
+2026-04-14 15:29:00 | INFO | blend_mvp | 
+===== 样本 8 开始，chunk_num=6 =====
+2026-04-14 15:29:01 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:29:02 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-4
+2026-04-14 15:29:02 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-reuse-template-5
+2026-04-14 15:29:02 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-8, 复用前缀 token=3801, 增量 prefill token=0
+2026-04-14 15:29:02 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:29:02 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-full-reuse-5
+2026-04-14 15:29:03 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-5
+2026-04-14 15:29:03 | INFO | blend_mvp | session_id=sample-kvd-8 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:29:04 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:29:04 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-stale-template-5
+2026-04-14 15:29:04 | INFO | blend_mvp | session_id=sample-qaw-8 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:29:05 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:29:05 | INFO | blend_mvp | sample=8 full_prefill(ttft=0.7863,total=0.9442) full_reuse(ttft=0.6068,total=0.7612,reused=3801,mode=cache_prefix_reuse) kvd(ttft=1.4308,total=1.5864,recomp=635,mode=kv_diff_recompute,true=True) qaw(ttft=0.8537,total=0.8793,recomp=635,mode=query_aware_recompute,true=True)
+2026-04-14 15:29:05 | INFO | blend_mvp | 
+===== 样本 9 开始，chunk_num=5 =====
+2026-04-14 15:29:06 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:29:06 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-5
+2026-04-14 15:29:06 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-reuse-template-6
+2026-04-14 15:29:06 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-9, 复用前缀 token=3419, 增量 prefill token=0
+2026-04-14 15:29:07 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:29:07 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-full-reuse-6
+2026-04-14 15:29:07 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-6
+2026-04-14 15:29:07 | INFO | blend_mvp | session_id=sample-kvd-9 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:29:08 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:29:08 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-stale-template-6
+2026-04-14 15:29:08 | INFO | blend_mvp | session_id=sample-qaw-9 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:29:09 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:29:09 | INFO | blend_mvp | sample=9 full_prefill(ttft=0.7035,total=0.8915) full_reuse(ttft=0.5473,total=0.7316,reused=3419,mode=cache_prefix_reuse) kvd(ttft=1.2904,total=1.4755,recomp=573,mode=kv_diff_recompute,true=True) qaw(ttft=0.7729,total=0.9565,recomp=573,mode=query_aware_recompute,true=True)
+2026-04-14 15:29:09 | INFO | blend_mvp | 
+===== 样本 10 开始，chunk_num=6 =====
+2026-04-14 15:29:10 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:29:11 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-6
+2026-04-14 15:29:11 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-reuse-template-7
+2026-04-14 15:29:11 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-10, 复用前缀 token=3943, 增量 prefill token=0
+2026-04-14 15:29:11 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:29:12 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-full-reuse-7
+2026-04-14 15:29:12 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-7
+2026-04-14 15:29:12 | INFO | blend_mvp | session_id=sample-kvd-10 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:29:13 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:29:13 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-stale-template-7
+2026-04-14 15:29:13 | INFO | blend_mvp | session_id=sample-qaw-10 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:29:14 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:29:14 | INFO | blend_mvp | sample=10 full_prefill(ttft=0.8308,total=0.9548) full_reuse(ttft=0.6276,total=0.7520,reused=3943,mode=cache_prefix_reuse) kvd(ttft=1.4954,total=1.6226,recomp=657,mode=kv_diff_recompute,true=True) qaw(ttft=0.9010,total=1.0290,recomp=657,mode=query_aware_recompute,true=True)
