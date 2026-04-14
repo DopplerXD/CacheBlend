@@ -1,12 +1,12 @@
-"""MusiQue 实验脚本：三种策略对比（仅落盘日志，不向终端输出）。"""
+"""SQuAD 实验脚本：三种策略对比（仅落盘日志，不向终端输出）。"""
 
+import importlib.util
 import json
 import os
 import sys
-import importlib.util
 from typing import List, Optional, Tuple
 
-# 允许从项目根目录导入模块（保持 `python example/blend_musique.py` 可直接运行）。
+# 允许从项目根目录导入模块（保持 `python example/blend_squad.py` 可直接运行）。
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
@@ -36,13 +36,14 @@ normalize_question = _EXAMPLE_UTILS_MODULE.normalize_question
 
 
 PREFIX_PROMPT = (
-    "You will be asked a question after reading several passages. "
-    "Please directly answer the question based on the given passages. "
-    "Do NOT repeat the question. The answer should be within 5 words.\nPassages:\n"
+    "Answer the question based on the given passage. "
+    "Only output the short answer phrase.\n\n"
+    "Passage:\n"
 )
 QUERY_PROMPT = (
-    "\n\nAnswer the question directly based on the given passages. "
-    "Do NOT repeat the question. The answer should be within 5 words. \nQuestion:"
+    "\n\nAnswer the question based on the given passage. "
+    "Only output the short answer phrase. "
+    "Question: "
 )
 
 
@@ -135,8 +136,7 @@ def main() -> None:
     cfg = RuntimeConfig()
     cfg.max_new_tokens = 32
 
-    # 按需求：脚本不向终端输出，统一写入 outputs/*.output。
-    logger = setup_logger("blend_musique", cfg.log_level)
+    logger = setup_logger("blend_squad", cfg.log_level)
     logger.disabled = True
 
     model_runner = YiModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
@@ -145,11 +145,11 @@ def main() -> None:
     engine = InferenceEngine(model_runner, kv_cache, logger)
 
     output_writer = ExperimentOutputWriter.create(
-        os.path.join(ROOT_DIR, "outputs"), run_tag="musique")
+        os.path.join(ROOT_DIR, "outputs"), run_tag="squad")
     output_writer.append_json({
         "event": "run_start",
-        "script": "example/blend_musique.py",
-        "dataset": "inputs/musique_s.json",
+        "script": "example/blend_squad.py",
+        "dataset": "inputs/squad_s.json",
         "started_at": utc8_now_str(),
         "model": cfg.model_name,
         "max_new_tokens": cfg.max_new_tokens,
@@ -157,7 +157,7 @@ def main() -> None:
         "top_p": cfg.top_p,
     })
 
-    dataset_path = os.path.join(ROOT_DIR, "inputs", "musique_s.json")
+    dataset_path = os.path.join(ROOT_DIR, "inputs", "squad_s.json")
     with open(dataset_path, "r", encoding="utf-8") as f:
         eval_dataset = json.load(f)
 
@@ -174,15 +174,13 @@ def main() -> None:
     base_f1_list: List[float] = []
     reuse_f1_list: List[float] = []
 
-    count = 0
     for sample_idx, ex in enumerate(eval_dataset, start=1):
-        count += 1
-        answers = ex.get("answers", [])
+        answer_texts = ex.get("answers", [])
         doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
         query_text = normalize_question(ex.get("question", ""))
         final_prompt = build_final_prompt(doc_prompts, q_prompt)
 
-        checkpoint_base = f"musique-ckpt-{sample_idx}"
+        checkpoint_base = f"squad-ckpt-{sample_idx}"
         checkpoint_ids = warm_chunk_checkpoints(engine, kv_cache, checkpoint_base,
                                                 doc_prompts)
         best_ckpt_id, best_ckpt_len = select_best_checkpoint(
@@ -193,9 +191,9 @@ def main() -> None:
         )
 
         # 方法 1：full reuse（完整 KV 复用，与 full prefill 相对）。
-        reuse_template_id = f"musique-reuse-template-{sample_idx}"
+        reuse_template_id = f"squad-reuse-template-{sample_idx}"
         warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
-        reuse_session_id = f"musique-reuse-{sample_idx}"
+        reuse_session_id = f"squad-reuse-{sample_idx}"
         seed_session_from_checkpoint(kv_cache, reuse_template_id, reuse_session_id)
         reuse_req = GenerateRequest(
             session_id=reuse_session_id,
@@ -209,7 +207,7 @@ def main() -> None:
         reuse_res = engine.generate(reuse_req)
 
         # 方法 2：高 KV 偏差重算。
-        kvd_session_id = f"musique-kvd-{sample_idx}"
+        kvd_session_id = f"squad-kvd-{sample_idx}"
         if best_ckpt_id is not None:
             seed_session_from_checkpoint(kv_cache, best_ckpt_id, kvd_session_id)
         kvd_req = GenerateRequest(
@@ -227,7 +225,7 @@ def main() -> None:
         kvd_res = engine.generate(kvd_req)
 
         # 方法 3：Query-aware 重算。
-        qaw_session_id = f"musique-qaw-{sample_idx}"
+        qaw_session_id = f"squad-qaw-{sample_idx}"
         if best_ckpt_id is not None:
             seed_session_from_checkpoint(kv_cache, best_ckpt_id, qaw_session_id)
         qaw_req = GenerateRequest(
@@ -238,7 +236,7 @@ def main() -> None:
             top_p=cfg.top_p,
             use_cache=True,
             recompute_strategy="query_aware",
-            recomp_ratio=0.30,
+            recomp_ratio=0.3,
             suffix_len=32,
             query_text=query_text,
         )
@@ -246,7 +244,7 @@ def main() -> None:
 
         # 方法 4：基线（关闭缓存，完整 prefill）。
         base_req = GenerateRequest(
-            session_id=f"musique-baseline-{sample_idx}",
+            session_id=f"squad-baseline-{sample_idx}",
             prompt=final_prompt,
             max_new_tokens=cfg.max_new_tokens,
             temperature=cfg.temperature,
@@ -266,13 +264,13 @@ def main() -> None:
         base_total_list.append(base_res.total_latency_s)
 
         reuse_f1 = max([compute_f1(reuse_res.generated_text, a, model_runner.tokenizer)
-                        for a in answers]) if answers else None
+                        for a in answer_texts]) if answer_texts else None
         kvd_f1 = max([compute_f1(kvd_res.generated_text, a, model_runner.tokenizer)
-                      for a in answers]) if answers else None
+                      for a in answer_texts]) if answer_texts else None
         qaw_f1 = max([compute_f1(qaw_res.generated_text, a, model_runner.tokenizer)
-                      for a in answers]) if answers else None
+                      for a in answer_texts]) if answer_texts else None
         base_f1 = max([compute_f1(base_res.generated_text, a, model_runner.tokenizer)
-                       for a in answers]) if answers else None
+                       for a in answer_texts]) if answer_texts else None
         if reuse_f1 is not None:
             reuse_f1_list.append(reuse_f1)
         if kvd_f1 is not None:
@@ -287,7 +285,7 @@ def main() -> None:
             "sample_idx": sample_idx,
             "chunk_num": len(doc_prompts),
             "question": ex.get("question", ""),
-            "answers": answers,
+            "answers": answer_texts,
             "selected_checkpoint": best_ckpt_id,
             "selected_prefix_tokens": best_ckpt_len,
             "full_reuse": {
@@ -304,6 +302,7 @@ def main() -> None:
                 "total_s": kvd_res.total_latency_s,
                 "reused_prefix_tokens": kvd_res.reused_prefix_tokens,
                 "recomputed_tokens": kvd_res.recomputed_tokens,
+                "recompute_mode": kvd_res.recompute_mode,
                 "f1": kvd_f1,
             },
             "query_aware": {
@@ -312,6 +311,7 @@ def main() -> None:
                 "total_s": qaw_res.total_latency_s,
                 "reused_prefix_tokens": qaw_res.reused_prefix_tokens,
                 "recomputed_tokens": qaw_res.recomputed_tokens,
+                "recompute_mode": qaw_res.recompute_mode,
                 "f1": qaw_f1,
             },
             "full_prefill": {
@@ -321,13 +321,10 @@ def main() -> None:
                 "f1": base_f1,
             },
         })
-        if count == 20:
-            break
 
     output_writer.append_json({
         "event": "run_summary",
-        # "sample_count": len(eval_dataset),
-        "sample_count": count,
+        "sample_count": len(eval_dataset),
         "full_reuse_avg_ttft_s": _mean(reuse_ttft_list),
         "kv_diff_avg_ttft_s": _mean(kvd_ttft_list),
         "query_aware_avg_ttft_s": _mean(qaw_ttft_list),

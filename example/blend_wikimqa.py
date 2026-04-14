@@ -130,6 +130,22 @@ def seed_session_from_checkpoint(kv_cache: KVCacheManager, src_session_id: str,
     return True
 
 
+def warm_prompt_cache(engine: InferenceEngine, kv_cache: KVCacheManager,
+                      session_id: str, prompt: str):
+    """将完整 prompt 预填充到指定会话（max_new_tokens=0）。"""
+    kv_cache.clear(session_id)
+    warm_req = GenerateRequest(
+        session_id=session_id,
+        prompt=prompt,
+        max_new_tokens=0,
+        temperature=0.0,
+        top_p=1.0,
+        use_cache=True,
+        recompute_strategy="none",
+    )
+    return engine.generate(warm_req)
+
+
 def main() -> None:
     cfg = RuntimeConfig()
     cfg.max_new_tokens = 32
@@ -163,12 +179,15 @@ def main() -> None:
     kvd_ttft_list: List[float] = []
     qaw_ttft_list: List[float] = []
     base_ttft_list: List[float] = []
+    reuse_ttft_list: List[float] = []
     kvd_total_list: List[float] = []
     qaw_total_list: List[float] = []
     base_total_list: List[float] = []
+    reuse_total_list: List[float] = []
     kvd_f1_list: List[float] = []
     qaw_f1_list: List[float] = []
     base_f1_list: List[float] = []
+    reuse_f1_list: List[float] = []
 
     count = 0
     for sample_idx, ex in enumerate(eval_dataset, start=1):
@@ -188,7 +207,23 @@ def main() -> None:
             target_prompt=final_prompt,
         )
 
-        # 方法 1：高 KV 偏差重算。
+        # 方法 1：full reuse（完整 KV 复用，与 full prefill 相对）。
+        reuse_template_id = f"wikimqa-reuse-template-{sample_idx}"
+        warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
+        reuse_session_id = f"wikimqa-reuse-{sample_idx}"
+        seed_session_from_checkpoint(kv_cache, reuse_template_id, reuse_session_id)
+        reuse_req = GenerateRequest(
+            session_id=reuse_session_id,
+            prompt=final_prompt,
+            max_new_tokens=cfg.max_new_tokens,
+            temperature=cfg.temperature,
+            top_p=cfg.top_p,
+            use_cache=True,
+            recompute_strategy="none",
+        )
+        reuse_res = engine.generate(reuse_req)
+
+        # 方法 2：高 KV 偏差重算。
         kvd_session_id = f"wikimqa-kvd-{sample_idx}"
         if best_ckpt_id is not None:
             seed_session_from_checkpoint(kv_cache, best_ckpt_id, kvd_session_id)
@@ -206,7 +241,7 @@ def main() -> None:
         )
         kvd_res = engine.generate(kvd_req)
 
-        # 方法 2：Query-aware 重算。
+        # 方法 3：Query-aware 重算。
         qaw_session_id = f"wikimqa-qaw-{sample_idx}"
         if best_ckpt_id is not None:
             seed_session_from_checkpoint(kv_cache, best_ckpt_id, qaw_session_id)
@@ -224,7 +259,7 @@ def main() -> None:
         )
         qaw_res = engine.generate(qaw_req)
 
-        # 方法 3：基线（关闭缓存，完整 prefill）。
+        # 方法 4：基线（关闭缓存，完整 prefill）。
         base_req = GenerateRequest(
             session_id=f"wikimqa-baseline-{sample_idx}",
             prompt=final_prompt,
@@ -236,19 +271,25 @@ def main() -> None:
         )
         base_res = engine.generate(base_req)
 
+        reuse_ttft_list.append(reuse_res.first_token_latency_s)
         kvd_ttft_list.append(kvd_res.first_token_latency_s)
         qaw_ttft_list.append(qaw_res.first_token_latency_s)
         base_ttft_list.append(base_res.first_token_latency_s)
+        reuse_total_list.append(reuse_res.total_latency_s)
         kvd_total_list.append(kvd_res.total_latency_s)
         qaw_total_list.append(qaw_res.total_latency_s)
         base_total_list.append(base_res.total_latency_s)
 
+        reuse_f1 = max([compute_f1(reuse_res.generated_text, a, model_runner.tokenizer)
+                        for a in answer_texts]) if answer_texts else None
         kvd_f1 = max([compute_f1(kvd_res.generated_text, a, model_runner.tokenizer)
                       for a in answer_texts]) if answer_texts else None
         qaw_f1 = max([compute_f1(qaw_res.generated_text, a, model_runner.tokenizer)
                       for a in answer_texts]) if answer_texts else None
         base_f1 = max([compute_f1(base_res.generated_text, a, model_runner.tokenizer)
                        for a in answer_texts]) if answer_texts else None
+        if reuse_f1 is not None:
+            reuse_f1_list.append(reuse_f1)
         if kvd_f1 is not None:
             kvd_f1_list.append(kvd_f1)
         if qaw_f1 is not None:
@@ -264,6 +305,14 @@ def main() -> None:
             "answers": answer_texts,
             "selected_checkpoint": best_ckpt_id,
             "selected_prefix_tokens": best_ckpt_len,
+            "full_reuse": {
+                "generated_text": reuse_res.generated_text,
+                "ttft_s": reuse_res.first_token_latency_s,
+                "total_s": reuse_res.total_latency_s,
+                "reused_prefix_tokens": reuse_res.reused_prefix_tokens,
+                "recompute_mode": reuse_res.recompute_mode,
+                "f1": reuse_f1,
+            },
             "kv_diff": {
                 "generated_text": kvd_res.generated_text,
                 "ttft_s": kvd_res.first_token_latency_s,
@@ -294,12 +343,15 @@ def main() -> None:
         "event": "run_summary",
         # "sample_count": len(eval_dataset),
         "sample_count": count,
+        "full_reuse_avg_ttft_s": _mean(reuse_ttft_list),
         "kv_diff_avg_ttft_s": _mean(kvd_ttft_list),
         "query_aware_avg_ttft_s": _mean(qaw_ttft_list),
         "full_prefill_avg_ttft_s": _mean(base_ttft_list),
+        "full_reuse_avg_total_s": _mean(reuse_total_list),
         "kv_diff_avg_total_s": _mean(kvd_total_list),
         "query_aware_avg_total_s": _mean(qaw_total_list),
         "full_prefill_avg_total_s": _mean(base_total_list),
+        "full_reuse_avg_f1": _mean(reuse_f1_list),
         "kv_diff_avg_f1": _mean(kvd_f1_list),
         "query_aware_avg_f1": _mean(qaw_f1_list),
         "full_prefill_avg_f1": _mean(base_f1_list),
