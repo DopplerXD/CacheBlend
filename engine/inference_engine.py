@@ -267,10 +267,13 @@ class InferenceEngine:
         past_key_values: Any = None
         logits: torch.Tensor | None = None
         idx = 0
+        recompute_span_count = 0
+        reuse_span_count = 0
 
         # 构建混合 KV：未选中 token 直接拼接 old KV，选中 token 走模型前向重算。
         while idx < new_len:
             if idx < overlap_len and idx not in selected_set:
+                # 连续“可复用 old KV”区间一次性拼接，避免频繁 cat。
                 run_end = idx + 1
                 while run_end < overlap_len and run_end not in selected_set:
                     run_end += 1
@@ -281,11 +284,21 @@ class InferenceEngine:
                     end_idx=run_end,
                 )
                 idx = run_end
+                reuse_span_count += 1
                 continue
 
+            # 连续“需重算”区间一次前向，降低逐 token 调度开销。
+            run_end = idx + 1
+            while run_end < new_len:
+                # 遇到下一个可复用 old KV 的位置则结束当前重算段。
+                if run_end < overlap_len and run_end not in selected_set:
+                    break
+                run_end += 1
+
             logits, past_key_values = self.model_runner.forward_tokens(
-                [prompt_token_ids[idx]], past_key_values=past_key_values)
-            idx += 1
+                prompt_token_ids[idx:run_end], past_key_values=past_key_values)
+            recompute_span_count += 1
+            idx = run_end
 
         # 若最后一个 token 未被重算，则补算一次最后 token logits 供 decode 使用。
         last_idx = new_len - 1
@@ -299,6 +312,13 @@ class InferenceEngine:
                 logits, past_key_values = self.model_runner.forward_tokens(
                     [prompt_token_ids[-1]], past_key_values=prefix_past)
 
+        self.logger.info(
+            "query-aware 分段重算: overlap=%d selected=%d recompute_spans=%d reuse_spans=%d",
+            overlap_len,
+            int(selected_indices.numel()),
+            recompute_span_count,
+            reuse_span_count,
+        )
         return logits, past_key_values, int(selected_indices.numel())
 
     @staticmethod
