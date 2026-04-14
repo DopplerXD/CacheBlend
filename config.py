@@ -12,7 +12,7 @@ class RuntimeConfig:
     """
 
     # 目标模型，默认 Yi-6B。
-    model_name: str = os.getenv("MODEL_NAME", "01-ai/Yi-6B")
+    model_name: str = os.getenv("MODEL_NAME", "/root/models/Yi-6B")
     # 推理设备：cuda / cpu。
     device: str = os.getenv("DEVICE", "cuda")
     # 模型权重 dtype：bfloat16 / float16 / float32。
