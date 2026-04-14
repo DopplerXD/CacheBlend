@@ -97,7 +97,7 @@ def warm_prompt_cache(engine: InferenceEngine, kv_cache: KVCacheManager,
 
 def ratio_grid() -> List[float]:
     # [0.15, 0.20, ..., 0.80] 共 14 组。
-    return [round(0.15 + i * 0.05, 2) for i in range(14)]
+    return [round(0.4 + i * 0.05, 2) for i in range(9)]
 
 
 def cleanup_group_runtime(kv_cache: Optional[KVCacheManager],
@@ -268,7 +268,7 @@ def main() -> None:
 
     # 默认每组最多测 200 条；当前按需求在 count=100 时提前停止。
     max_samples_per_ratio = 200
-    stop_count = 30
+    stop_count = 50
 
     logger = setup_logger("blend_musique_curve", cfg.log_level)
     logger.disabled = True
