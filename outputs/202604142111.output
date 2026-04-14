@@ -1,0 +1,243 @@
+(venv) (yi) root@43b8f2eba4bd:~/github/CacheBlend# python example/blend.py
+2026-04-14 13:07:21 | INFO | blend_mvp | 启动 MVP 示例，模型=/root/models/Yi-6B
+2026-04-14 13:07:23 | INFO | blend_mvp | 加载 tokenizer: /root/models/Yi-6B
+2026-04-14 13:07:23 | INFO | blend_mvp | 加载模型: /root/models/Yi-6B, device=cuda, dtype=torch.bfloat16
+Loading checkpoint shards: 100%|██████████████████████████████████████████████████████████████████████████████| 2/2 [00:00<00:00,  3.74it/s]
+2026-04-14 13:08:30 | INFO | blend_mvp | 
+===== 样本 1 开始，chunk_num=6 =====
+Starting from v4.46, the `logits` model output will have the same type as the model (except at train time, where it will always be FP32)
+2026-04-14 13:08:30 | INFO | blend_mvp | session_id=sample-kvd-1 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:30 | INFO | blend_mvp | session_id=sample-kvd-1 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:31 | INFO | blend_mvp | session_id=sample-kvd-1 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:31 | INFO | blend_mvp | session_id=sample-kvd-1 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:32 | INFO | blend_mvp | session_id=sample-kvd-1 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:32 | INFO | blend_mvp | session_id=sample-kvd-1 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+We detected that you are passing `past_key_values` as a tuple of tuples. This is deprecated and will be removed in v4.47. Please convert your cache or use an appropriate `Cache` class (https://huggingface.co/docs/transformers/kv_cache#legacy-cache-format)
+2026-04-14 13:08:34 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:08:34 | INFO | blend_mvp | session_id=sample-qaw-1 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:34 | INFO | blend_mvp | session_id=sample-qaw-1 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:34 | INFO | blend_mvp | session_id=sample-qaw-1 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:35 | INFO | blend_mvp | session_id=sample-qaw-1 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:35 | INFO | blend_mvp | session_id=sample-qaw-1 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:36 | INFO | blend_mvp | session_id=sample-qaw-1 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:08:38 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:08:39 | INFO | blend_mvp | 命中 EOS，提前结束生成
+[Sample 1] KV-diff generation: 1985
+[Sample 1] KV-diff TTFT: 1.4982s | Total: 1.6791s | Reused: 0 | Mode: kv_diff_recompute | Recomputed: 647
+[Sample 1] Query-aware generation: 1985
+[Sample 1] Query-aware TTFT: 1.4664s | Total: 1.6470s | Reused: 0 | Mode: query_aware_recompute | Recomputed: 647
+[Sample 1] Normal generation: 1985
+[Sample 1] TTFT full prefill: 0.7735s | Total: 0.9769s
+------------
+2026-04-14 13:08:39 | INFO | blend_mvp | 
+===== 样本 2 开始，chunk_num=5 =====
+2026-04-14 13:08:39 | INFO | blend_mvp | session_id=sample-kvd-2 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:39 | INFO | blend_mvp | session_id=sample-kvd-2 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:39 | INFO | blend_mvp | session_id=sample-kvd-2 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:40 | INFO | blend_mvp | session_id=sample-kvd-2 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:40 | INFO | blend_mvp | session_id=sample-kvd-2 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:08:42 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:08:42 | INFO | blend_mvp | session_id=sample-qaw-2 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:42 | INFO | blend_mvp | session_id=sample-qaw-2 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:42 | INFO | blend_mvp | session_id=sample-qaw-2 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:43 | INFO | blend_mvp | session_id=sample-qaw-2 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:43 | INFO | blend_mvp | session_id=sample-qaw-2 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:08:45 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:08:46 | INFO | blend_mvp | 命中 EOS，提前结束生成
+[Sample 2] KV-diff generation: Hell Up In Harlem.
+[Sample 2] KV-diff TTFT: 1.2829s | Total: 1.4951s | Reused: 0 | Mode: kv_diff_recompute | Recomputed: 588
+[Sample 2] Query-aware generation: Hell Up In Harlem.
+[Sample 2] Query-aware TTFT: 1.2818s | Total: 1.4899s | Reused: 0 | Mode: query_aware_recompute | Recomputed: 588
+[Sample 2] Normal generation: Hell Up In Harlem.
+[Sample 2] TTFT full prefill: 0.6948s | Total: 0.9144s
+------------
+2026-04-14 13:08:46 | INFO | blend_mvp | 
+===== 样本 3 开始，chunk_num=5 =====
+2026-04-14 13:08:46 | INFO | blend_mvp | session_id=sample-kvd-3 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:46 | INFO | blend_mvp | session_id=sample-kvd-3 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:46 | INFO | blend_mvp | session_id=sample-kvd-3 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:47 | INFO | blend_mvp | session_id=sample-kvd-3 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:47 | INFO | blend_mvp | session_id=sample-kvd-3 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:08:49 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:08:49 | INFO | blend_mvp | session_id=sample-qaw-3 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:49 | INFO | blend_mvp | session_id=sample-qaw-3 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:49 | INFO | blend_mvp | session_id=sample-qaw-3 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:50 | INFO | blend_mvp | session_id=sample-qaw-3 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:50 | INFO | blend_mvp | session_id=sample-qaw-3 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:08:52 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:08:53 | INFO | blend_mvp | 命中 EOS，提前结束生成
+[Sample 3] KV-diff generation: Cipriano Castro.
+[Sample 3] KV-diff TTFT: 1.2603s | Total: 1.4730s | Reused: 0 | Mode: kv_diff_recompute | Recomputed: 578
+[Sample 3] Query-aware generation: Cipriano Castro.
+[Sample 3] Query-aware TTFT: 1.2732s | Total: 1.4925s | Reused: 0 | Mode: query_aware_recompute | Recomputed: 578
+[Sample 3] Normal generation: Cipriano Castro.
+[Sample 3] TTFT full prefill: 0.6919s | Total: 0.9071s
+------------
+2026-04-14 13:08:53 | INFO | blend_mvp | 
+===== 样本 4 开始，chunk_num=6 =====
+2026-04-14 13:08:53 | INFO | blend_mvp | session_id=sample-kvd-4 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:53 | INFO | blend_mvp | session_id=sample-kvd-4 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:53 | INFO | blend_mvp | session_id=sample-kvd-4 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:54 | INFO | blend_mvp | session_id=sample-kvd-4 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:54 | INFO | blend_mvp | session_id=sample-kvd-4 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:55 | INFO | blend_mvp | session_id=sample-kvd-4 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:08:56 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:08:56 | INFO | blend_mvp | session_id=sample-qaw-4 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:57 | INFO | blend_mvp | session_id=sample-qaw-4 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:57 | INFO | blend_mvp | session_id=sample-qaw-4 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:57 | INFO | blend_mvp | session_id=sample-qaw-4 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:58 | INFO | blend_mvp | session_id=sample-qaw-4 前缀不匹配，回退全量 prefill
+2026-04-14 13:08:59 | INFO | blend_mvp | session_id=sample-qaw-4 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:09:00 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:09:01 | INFO | blend_mvp | 命中 EOS，提前结束生成
+[Sample 4] KV-diff generation: Jugband Blues
+[Sample 4] KV-diff TTFT: 1.4100s | Total: 1.5599s | Reused: 0 | Mode: kv_diff_recompute | Recomputed: 653
+[Sample 4] Query-aware generation: Jugband Blues
+[Sample 4] Query-aware TTFT: 1.4147s | Total: 1.5643s | Reused: 0 | Mode: query_aware_recompute | Recomputed: 653
+[Sample 4] Normal generation: Jugband Blues
+[Sample 4] TTFT full prefill: 0.7820s | Total: 0.9374s
+------------
+2026-04-14 13:09:01 | INFO | blend_mvp | 
+===== 样本 5 开始，chunk_num=6 =====
+2026-04-14 13:09:01 | INFO | blend_mvp | session_id=sample-kvd-5 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:01 | INFO | blend_mvp | session_id=sample-kvd-5 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:01 | INFO | blend_mvp | session_id=sample-kvd-5 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:02 | INFO | blend_mvp | session_id=sample-kvd-5 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:02 | INFO | blend_mvp | session_id=sample-kvd-5 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:03 | INFO | blend_mvp | session_id=sample-kvd-5 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:09:04 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:09:05 | INFO | blend_mvp | session_id=sample-qaw-5 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:05 | INFO | blend_mvp | session_id=sample-qaw-5 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:05 | INFO | blend_mvp | session_id=sample-qaw-5 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:05 | INFO | blend_mvp | session_id=sample-qaw-5 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:06 | INFO | blend_mvp | session_id=sample-qaw-5 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:07 | INFO | blend_mvp | session_id=sample-qaw-5 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:09:08 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:09:09 | INFO | blend_mvp | 命中 EOS，提前结束生成
+[Sample 5] KV-diff generation: 
+[Sample 5] KV-diff TTFT: 1.3889s | Total: 1.4122s | Reused: 0 | Mode: kv_diff_recompute | Recomputed: 627
+[Sample 5] Query-aware generation: 
+[Sample 5] Query-aware TTFT: 1.3912s | Total: 1.4146s | Reused: 0 | Mode: query_aware_recompute | Recomputed: 627
+[Sample 5] Normal generation: 
+[Sample 5] TTFT full prefill: 0.7557s | Total: 0.7794s
+------------
+2026-04-14 13:09:09 | INFO | blend_mvp | 
+===== 样本 6 开始，chunk_num=5 =====
+2026-04-14 13:09:09 | INFO | blend_mvp | session_id=sample-kvd-6 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:09 | INFO | blend_mvp | session_id=sample-kvd-6 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:09 | INFO | blend_mvp | session_id=sample-kvd-6 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:10 | INFO | blend_mvp | session_id=sample-kvd-6 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:10 | INFO | blend_mvp | session_id=sample-kvd-6 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:09:12 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:09:12 | INFO | blend_mvp | session_id=sample-qaw-6 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:12 | INFO | blend_mvp | session_id=sample-qaw-6 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:12 | INFO | blend_mvp | session_id=sample-qaw-6 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:13 | INFO | blend_mvp | session_id=sample-qaw-6 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:14 | INFO | blend_mvp | session_id=sample-qaw-6 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:09:15 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:09:16 | INFO | blend_mvp | 命中 EOS，提前结束生成
+[Sample 6] KV-diff generation: 
+[Sample 6] KV-diff TTFT: 1.3938s | Total: 1.4175s | Reused: 0 | Mode: kv_diff_recompute | Recomputed: 645
+[Sample 6] Query-aware generation: 
+[Sample 6] Query-aware TTFT: 1.3907s | Total: 1.4144s | Reused: 0 | Mode: query_aware_recompute | Recomputed: 645
+[Sample 6] Normal generation: 
+[Sample 6] TTFT full prefill: 0.7592s | Total: 0.7829s
+------------
+2026-04-14 13:09:16 | INFO | blend_mvp | 
+===== 样本 7 开始，chunk_num=6 =====
+2026-04-14 13:09:16 | INFO | blend_mvp | session_id=sample-kvd-7 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:16 | INFO | blend_mvp | session_id=sample-kvd-7 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:16 | INFO | blend_mvp | session_id=sample-kvd-7 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:17 | INFO | blend_mvp | session_id=sample-kvd-7 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:17 | INFO | blend_mvp | session_id=sample-kvd-7 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:18 | INFO | blend_mvp | session_id=sample-kvd-7 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:09:19 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:09:20 | INFO | blend_mvp | session_id=sample-qaw-7 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:20 | INFO | blend_mvp | session_id=sample-qaw-7 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:20 | INFO | blend_mvp | session_id=sample-qaw-7 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:20 | INFO | blend_mvp | session_id=sample-qaw-7 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:21 | INFO | blend_mvp | session_id=sample-qaw-7 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:22 | INFO | blend_mvp | session_id=sample-qaw-7 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:09:23 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:09:24 | INFO | blend_mvp | 命中 EOS，提前结束生成
+[Sample 7] KV-diff generation: 
+[Sample 7] KV-diff TTFT: 1.4768s | Total: 1.5015s | Reused: 0 | Mode: kv_diff_recompute | Recomputed: 657
+[Sample 7] Query-aware generation: 
+[Sample 7] Query-aware TTFT: 1.4768s | Total: 1.5015s | Reused: 0 | Mode: query_aware_recompute | Recomputed: 657
+[Sample 7] Normal generation: 
+[Sample 7] TTFT full prefill: 0.8244s | Total: 0.8492s
+------------
+2026-04-14 13:09:24 | INFO | blend_mvp | 
+===== 样本 8 开始，chunk_num=6 =====
+2026-04-14 13:09:24 | INFO | blend_mvp | session_id=sample-kvd-8 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:24 | INFO | blend_mvp | session_id=sample-kvd-8 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:25 | INFO | blend_mvp | session_id=sample-kvd-8 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:25 | INFO | blend_mvp | session_id=sample-kvd-8 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:26 | INFO | blend_mvp | session_id=sample-kvd-8 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:26 | INFO | blend_mvp | session_id=sample-kvd-8 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:09:28 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:09:28 | INFO | blend_mvp | session_id=sample-qaw-8 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:28 | INFO | blend_mvp | session_id=sample-qaw-8 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:28 | INFO | blend_mvp | session_id=sample-qaw-8 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:29 | INFO | blend_mvp | session_id=sample-qaw-8 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:29 | INFO | blend_mvp | session_id=sample-qaw-8 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:30 | INFO | blend_mvp | session_id=sample-qaw-8 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:09:31 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:09:32 | INFO | blend_mvp | 命中 EOS，提前结束生成
+[Sample 8] KV-diff generation: √
+[Sample 8] KV-diff TTFT: 1.4232s | Total: 1.5777s | Reused: 0 | Mode: kv_diff_recompute | Recomputed: 661
+[Sample 8] Query-aware generation: √
+[Sample 8] Query-aware TTFT: 1.4212s | Total: 1.5718s | Reused: 0 | Mode: query_aware_recompute | Recomputed: 661
+[Sample 8] Normal generation: √
+[Sample 8] TTFT full prefill: 0.7864s | Total: 0.9405s
+------------
+2026-04-14 13:09:32 | INFO | blend_mvp | 
+===== 样本 9 开始，chunk_num=5 =====
+2026-04-14 13:09:32 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-1
+2026-04-14 13:09:32 | INFO | blend_mvp | session_id=sample-kvd-9 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:33 | INFO | blend_mvp | session_id=sample-kvd-9 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:33 | INFO | blend_mvp | session_id=sample-kvd-9 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:33 | INFO | blend_mvp | session_id=sample-kvd-9 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:34 | INFO | blend_mvp | session_id=sample-kvd-9 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:09:36 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:09:36 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-1
+2026-04-14 13:09:36 | INFO | blend_mvp | session_id=sample-qaw-9 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:36 | INFO | blend_mvp | session_id=sample-qaw-9 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:36 | INFO | blend_mvp | session_id=sample-qaw-9 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:37 | INFO | blend_mvp | session_id=sample-qaw-9 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:37 | INFO | blend_mvp | session_id=sample-qaw-9 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:09:39 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:09:40 | INFO | blend_mvp | 命中 EOS，提前结束生成
+[Sample 9] KV-diff generation: The Abduction Club.
+[Sample 9] KV-diff TTFT: 1.2925s | Total: 1.4731s | Reused: 0 | Mode: kv_diff_recompute | Recomputed: 589
+[Sample 9] Query-aware generation: The Abduction Club.
+[Sample 9] Query-aware TTFT: 1.2953s | Total: 1.4813s | Reused: 0 | Mode: query_aware_recompute | Recomputed: 589
+[Sample 9] Normal generation: The Abduction Club.
+[Sample 9] TTFT full prefill: 0.7053s | Total: 0.8908s
+------------
+2026-04-14 13:09:40 | INFO | blend_mvp | 
+===== 样本 10 开始，chunk_num=6 =====
+2026-04-14 13:09:40 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-2
+2026-04-14 13:09:40 | INFO | blend_mvp | session_id=sample-kvd-10 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:40 | INFO | blend_mvp | session_id=sample-kvd-10 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:40 | INFO | blend_mvp | session_id=sample-kvd-10 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:41 | INFO | blend_mvp | session_id=sample-kvd-10 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:41 | INFO | blend_mvp | session_id=sample-kvd-10 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:42 | INFO | blend_mvp | session_id=sample-kvd-10 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:09:44 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:09:44 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-2
+2026-04-14 13:09:44 | INFO | blend_mvp | session_id=sample-qaw-10 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:44 | INFO | blend_mvp | session_id=sample-qaw-10 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:44 | INFO | blend_mvp | session_id=sample-qaw-10 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:45 | INFO | blend_mvp | session_id=sample-qaw-10 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:45 | INFO | blend_mvp | session_id=sample-qaw-10 前缀不匹配，回退全量 prefill
+2026-04-14 13:09:46 | INFO | blend_mvp | session_id=sample-qaw-10 前缀不匹配，启用 Query-aware 重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 13:09:48 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 13:09:48 | INFO | blend_mvp | 命中 EOS，提前结束生成
+[Sample 10] KV-diff generation: Above Rubies
+[Sample 10] KV-diff TTFT: 1.4784s | Total: 1.5980s | Reused: 0 | Mode: kv_diff_recompute | Recomputed: 671
+[Sample 10] Query-aware generation: Above Rubies
+[Sample 10] Query-aware TTFT: 1.4796s | Total: 1.5998s | Reused: 0 | Mode: query_aware_recompute | Recomputed: 671
+[Sample 10] Normal generation: Above Rubies
+[Sample 10] TTFT full prefill: 0.8338s | Total: 0.9545s
+------------
