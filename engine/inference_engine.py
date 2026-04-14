@@ -179,6 +179,46 @@ class InferenceEngine:
             merged.append((merged_k, merged_v, *dst_layer[2:]))
         return tuple(merged)
 
+    def _build_blended_from_old_and_selected(self, old_past_key_values: Any,
+                                             selected_past_key_values: Any,
+                                             selected_indices: torch.Tensor,
+                                             new_len: int) -> Any:
+        """近似实验：用 old KV 作底座，将 packed-selected KV scatter 回原位置。"""
+        selected_num = int(selected_indices.numel())
+        if selected_num <= 0:
+            return self.model_runner.truncate_past_key_values(old_past_key_values,
+                                                              new_len)
+
+        blended = []
+        for old_layer, sel_layer in zip(old_past_key_values, selected_past_key_values):
+            old_k, old_v = old_layer[0], old_layer[1]
+            sel_k, sel_v = sel_layer[0], sel_layer[1]
+            old_len = old_k.shape[-2]
+
+            if old_len >= new_len:
+                base_k = old_k[:, :, :new_len, :].clone()
+                base_v = old_v[:, :, :new_len, :].clone()
+            else:
+                pad_len = new_len - old_len
+                k_pad = torch.zeros(
+                    (old_k.shape[0], old_k.shape[1], pad_len, old_k.shape[3]),
+                    dtype=old_k.dtype,
+                    device=old_k.device,
+                )
+                v_pad = torch.zeros(
+                    (old_v.shape[0], old_v.shape[1], pad_len, old_v.shape[3]),
+                    dtype=old_v.dtype,
+                    device=old_v.device,
+                )
+                base_k = torch.cat([old_k, k_pad], dim=-2)
+                base_v = torch.cat([old_v, v_pad], dim=-2)
+
+            # packed prefill 的序列顺序与 selected_indices 对齐，直接 scatter 回去。
+            base_k[:, :, selected_indices, :] = sel_k[:, :, :selected_num, :]
+            base_v[:, :, selected_indices, :] = sel_v[:, :, :selected_num, :]
+            blended.append((base_k, base_v, *old_layer[2:]))
+        return tuple(blended)
+
     def _prefill_with_kv_diff_recompute(self, req: GenerateRequest, old_tokens: List[int],
                                         old_past_key_values: Any,
                                         prompt_token_ids: List[int]) -> Tuple[torch.Tensor, Any, int]:
@@ -232,7 +272,7 @@ class InferenceEngine:
             self, req: GenerateRequest, old_tokens: List[int],
             old_past_key_values: Any,
             prompt_token_ids: List[int]) -> Tuple[torch.Tensor, Any, int]:
-        """query-aware 选择性重算流程（不做 full prefill，按 token 增量拼接）。"""
+        """query-aware 近似实验：selected token 打包 prefill 后 scatter 回原位置。"""
         old_len = self.model_runner.get_past_len(old_past_key_values)
         new_len = len(prompt_token_ids)
         overlap_len = min(old_len, new_len, len(old_tokens))
@@ -262,62 +302,43 @@ class InferenceEngine:
             suffix_len=req.suffix_len,
             force_changed=False,
         )
+        selected_list = [int(i) for i in selected_indices.tolist()]
+        selected_token_ids = [prompt_token_ids[i] for i in selected_list]
+        selected_position_ids = selected_list
 
-        selected_set = set(int(i) for i in selected_indices.tolist())
-        past_key_values: Any = None
-        logits: torch.Tensor | None = None
-        idx = 0
-        recompute_span_count = 0
-        reuse_span_count = 0
+        # Step 1/2: 选中 token 打包一次 prefill（可选用原始 position_ids）。
+        _, selected_past_key_values = self.model_runner.forward_tokens(
+            selected_token_ids,
+            past_key_values=None,
+            position_ids=selected_position_ids,
+        )
 
-        # 构建混合 KV：未选中 token 直接拼接 old KV，选中 token 走模型前向重算。
-        while idx < new_len:
-            if idx < overlap_len and idx not in selected_set:
-                # 连续“可复用 old KV”区间一次性拼接，避免频繁 cat。
-                run_end = idx + 1
-                while run_end < overlap_len and run_end not in selected_set:
-                    run_end += 1
-                past_key_values = self._append_range_from_source_past_key_values(
-                    past_key_values=past_key_values,
-                    source_past_key_values=old_past_key_values,
-                    start_idx=idx,
-                    end_idx=run_end,
-                )
-                idx = run_end
-                reuse_span_count += 1
-                continue
+        # Step 3: 将 packed KV scatter 回完整序列位置，未选中位置复用 old KV。
+        blended_past_key_values = self._build_blended_from_old_and_selected(
+            old_past_key_values=old_past_key_values,
+            selected_past_key_values=selected_past_key_values,
+            selected_indices=selected_indices,
+            new_len=new_len,
+        )
 
-            # 连续“需重算”区间一次前向，降低逐 token 调度开销。
-            run_end = idx + 1
-            while run_end < new_len:
-                # 遇到下一个可复用 old KV 的位置则结束当前重算段。
-                if run_end < overlap_len and run_end not in selected_set:
-                    break
-                run_end += 1
-
+        # 用 blended KV 补算最后一个 prompt token 的 logits，进入 decode。
+        if new_len == 1:
             logits, past_key_values = self.model_runner.forward_tokens(
-                prompt_token_ids[idx:run_end], past_key_values=past_key_values)
-            recompute_span_count += 1
-            idx = run_end
-
-        # 若最后一个 token 未被重算，则补算一次最后 token logits 供 decode 使用。
-        last_idx = new_len - 1
-        if last_idx not in selected_set:
-            if new_len == 1:
-                logits, past_key_values = self.model_runner.forward_tokens(
-                    [prompt_token_ids[0]], past_key_values=None)
-            else:
-                prefix_past = self.model_runner.truncate_past_key_values(
-                    past_key_values, new_len - 1)
-                logits, past_key_values = self.model_runner.forward_tokens(
-                    [prompt_token_ids[-1]], past_key_values=prefix_past)
+                [prompt_token_ids[0]], past_key_values=None)
+        else:
+            prefix_past = self.model_runner.truncate_past_key_values(
+                blended_past_key_values, new_len - 1)
+            logits, past_key_values = self.model_runner.forward_tokens(
+                [prompt_token_ids[-1]],
+                past_key_values=prefix_past,
+                position_ids=[new_len - 1],
+            )
 
         self.logger.info(
-            "query-aware 分段重算: overlap=%d selected=%d recompute_spans=%d reuse_spans=%d",
+            "query-aware 打包重算: overlap=%d selected=%d packed_len=%d",
             overlap_len,
             int(selected_indices.numel()),
-            recompute_span_count,
-            reuse_span_count,
+            len(selected_token_ids),
         )
         return logits, past_key_values, int(selected_indices.numel())
 

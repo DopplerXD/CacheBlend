@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, List, Tuple
+from typing import Any, List, Optional, Tuple
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -104,7 +104,8 @@ class YiModelRunner:
     @torch.inference_mode()
     def forward_tokens(self,
                        input_token_ids: List[int],
-                       past_key_values: Any = None) -> Tuple[torch.Tensor, Any]:
+                       past_key_values: Any = None,
+                       position_ids: Optional[List[int]] = None) -> Tuple[torch.Tensor, Any]:
         """执行一次前向，返回 logits 与新的 past_key_values。"""
         if len(input_token_ids) == 0:
             raise ValueError("input_token_ids 不能为空")
@@ -117,10 +118,18 @@ class YiModelRunner:
         attention_mask = torch.ones((1, attn_len),
                                     dtype=torch.long,
                                     device=self.device)
+        position_tensor = None
+        if position_ids is not None:
+            if len(position_ids) != len(input_token_ids):
+                raise ValueError("position_ids 长度需与 input_token_ids 一致")
+            position_tensor = torch.tensor([position_ids],
+                                           dtype=torch.long,
+                                           device=self.device)
 
         outputs = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
+            position_ids=position_tensor,
             past_key_values=past_key_values,
             use_cache=True,
             return_dict=True,
