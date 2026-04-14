@@ -1,0 +1,22 @@
+2026-04-14 15:45:03 | INFO | blend_mvp | 加载 tokenizer: /root/models/Yi-6B
+2026-04-14 15:45:04 | INFO | blend_mvp | 加载模型: /root/models/Yi-6B, device=cuda, dtype=torch.bfloat16
+2026-04-14 15:45:08 | INFO | blend_mvp | 实验结构化日志文件: /root/github/CacheBlend/outputs/202604142345_blend.output
+2026-04-14 15:45:08 | INFO | blend_mvp | 实验控制台风格日志文件: /root/github/CacheBlend/outputs/202604142345_blend_console.output
+2026-04-14 15:45:08 | INFO | blend_mvp | 
+===== 样本 1 开始，chunk_num=6 =====
+2026-04-14 15:45:09 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:45:09 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-1, 复用前缀 token=3796, 增量 prefill token=0
+2026-04-14 15:45:10 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:45:10 | INFO | blend_mvp | session_id=sample-kvd-1 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:45:12 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:45:12 | INFO | blend_mvp | session_id=sample-qaw-1 前缀不匹配，启用 Query-aware 重算策略（ratio=0.300, suffix_len=32）
+2026-04-14 15:45:50 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:45:50 | INFO | blend_mvp | sample=1 full_prefill(ttft=1.1685,total=1.3867) full_reuse(ttft=0.5964,total=0.7808,reused=3796,mode=cache_prefix_reuse) kvd(ttft=1.4656,total=1.6523,recomp=634,mode=kv_diff_recompute,true=True) qaw(ttft=38.2303,total=38.4161,recomp=1161,mode=query_aware_recompute,true=True)
+2026-04-14 15:45:50 | INFO | blend_mvp | 
+===== 样本 2 开始，chunk_num=5 =====
+2026-04-14 15:45:51 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:45:52 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-2, 复用前缀 token=3402, 增量 prefill token=0
+2026-04-14 15:45:52 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:45:53 | INFO | blend_mvp | session_id=sample-kvd-2 前缀不匹配，启用 KV 偏差重算策略（ratio=0.160, suffix_len=32）
+2026-04-14 15:45:54 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:45:54 | INFO | blend_mvp | session_id=sample-qaw-2 前缀不匹配，启用 Query-aware 重算策略（ratio=0.300, suffix_len=32）

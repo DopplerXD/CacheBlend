@@ -155,7 +155,9 @@ def main() -> None:
     qaw_f1_list: List[float] = []
     base_f1_list: List[float] = []
 
+    count = 0
     for sample_idx, ex in enumerate(eval_dataset, start=1):
+        count += 1
         answers = ex.get("answers", [])
         doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
         query_text = normalize_question(ex.get("question", ""))
@@ -201,7 +203,7 @@ def main() -> None:
             top_p=cfg.top_p,
             use_cache=True,
             recompute_strategy="query_aware",
-            recomp_ratio=0.16,
+            recomp_ratio=0.50,
             suffix_len=32,
             query_text=query_text,
         )
@@ -270,10 +272,13 @@ def main() -> None:
                 "f1": base_f1,
             },
         })
+        if count == 20:
+            break
 
     output_writer.append_json({
         "event": "run_summary",
-        "sample_count": len(eval_dataset),
+        # "sample_count": len(eval_dataset),
+        "sample_count": count,
         "kv_diff_avg_ttft_s": _mean(kvd_ttft_list),
         "query_aware_avg_ttft_s": _mean(qaw_ttft_list),
         "full_prefill_avg_ttft_s": _mean(base_ttft_list),
