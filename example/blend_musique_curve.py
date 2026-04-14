@@ -103,7 +103,7 @@ def main() -> None:
 
     # 默认每组最多测 200 条；当前按需求在 count=100 时提前停止。
     max_samples_per_ratio = 200
-    stop_count = 100
+    stop_count = 30
 
     logger = setup_logger("blend_musique_curve", cfg.log_level)
     logger.disabled = True
