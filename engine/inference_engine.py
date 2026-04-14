@@ -151,6 +151,34 @@ class InferenceEngine:
             blended.append((base_k, base_v, *new_layer[2:]))
         return tuple(blended)
 
+    def _append_range_from_source_past_key_values(self, past_key_values: Any,
+                                                  source_past_key_values: Any,
+                                                  start_idx: int,
+                                                  end_idx: int) -> Any:
+        """将 source_past 的 [start_idx:end_idx) 追加到当前 past 末尾。"""
+        if source_past_key_values is None or start_idx >= end_idx:
+            return past_key_values
+
+        if past_key_values is None:
+            appended = []
+            for src_layer in source_past_key_values:
+                src_k, src_v = src_layer[0], src_layer[1]
+                append_k = src_k[:, :, start_idx:end_idx, :].clone()
+                append_v = src_v[:, :, start_idx:end_idx, :].clone()
+                appended.append((append_k, append_v, *src_layer[2:]))
+            return tuple(appended)
+
+        merged = []
+        for dst_layer, src_layer in zip(past_key_values, source_past_key_values):
+            dst_k, dst_v = dst_layer[0], dst_layer[1]
+            src_k, src_v = src_layer[0], src_layer[1]
+            append_k = src_k[:, :, start_idx:end_idx, :]
+            append_v = src_v[:, :, start_idx:end_idx, :]
+            merged_k = torch.cat([dst_k, append_k], dim=-2)
+            merged_v = torch.cat([dst_v, append_v], dim=-2)
+            merged.append((merged_k, merged_v, *dst_layer[2:]))
+        return tuple(merged)
+
     def _prefill_with_kv_diff_recompute(self, req: GenerateRequest, old_tokens: List[int],
                                         old_past_key_values: Any,
                                         prompt_token_ids: List[int]) -> Tuple[torch.Tensor, Any, int]:
@@ -204,14 +232,10 @@ class InferenceEngine:
             self, req: GenerateRequest, old_tokens: List[int],
             old_past_key_values: Any,
             prompt_token_ids: List[int]) -> Tuple[torch.Tensor, Any, int]:
-        """query-aware 选择性重算流程（当前实现为可运行优先）。"""
-        # 与 kv_diff 相同，这里先做一次 full prefill 拿到 new KV，再做选择与融合。
-        _, new_past_key_values = self.model_runner.forward_tokens(prompt_token_ids,
-                                                                  past_key_values=None)
-
+        """query-aware 选择性重算流程（不做 full prefill，按 token 增量拼接）。"""
         old_len = self.model_runner.get_past_len(old_past_key_values)
-        new_len = self.model_runner.get_past_len(new_past_key_values)
-        overlap_len = min(old_len, new_len, len(old_tokens), len(prompt_token_ids))
+        new_len = len(prompt_token_ids)
+        overlap_len = min(old_len, new_len, len(old_tokens))
 
         if overlap_len <= 0:
             logits, past_key_values = self.model_runner.forward_tokens(prompt_token_ids,
@@ -239,21 +263,41 @@ class InferenceEngine:
             force_changed=False,
         )
 
-        blended_past_key_values = self._build_blended_past_key_values(
-            old_past_key_values=old_past_key_values,
-            new_past_key_values=new_past_key_values,
-            new_len=len(prompt_token_ids),
-            selected_indices=selected_indices,
-        )
+        selected_set = set(int(i) for i in selected_indices.tolist())
+        past_key_values: Any = None
+        logits: torch.Tensor | None = None
+        idx = 0
 
-        if len(prompt_token_ids) == 1:
-            logits, past_key_values = self.model_runner.forward_tokens(prompt_token_ids,
-                                                                       past_key_values=None)
-        else:
-            prefix_past = self.model_runner.truncate_past_key_values(
-                blended_past_key_values, len(prompt_token_ids) - 1)
+        # 构建混合 KV：未选中 token 直接拼接 old KV，选中 token 走模型前向重算。
+        while idx < new_len:
+            if idx < overlap_len and idx not in selected_set:
+                run_end = idx + 1
+                while run_end < overlap_len and run_end not in selected_set:
+                    run_end += 1
+                past_key_values = self._append_range_from_source_past_key_values(
+                    past_key_values=past_key_values,
+                    source_past_key_values=old_past_key_values,
+                    start_idx=idx,
+                    end_idx=run_end,
+                )
+                idx = run_end
+                continue
+
             logits, past_key_values = self.model_runner.forward_tokens(
-                [prompt_token_ids[-1]], past_key_values=prefix_past)
+                [prompt_token_ids[idx]], past_key_values=past_key_values)
+            idx += 1
+
+        # 若最后一个 token 未被重算，则补算一次最后 token logits 供 decode 使用。
+        last_idx = new_len - 1
+        if last_idx not in selected_set:
+            if new_len == 1:
+                logits, past_key_values = self.model_runner.forward_tokens(
+                    [prompt_token_ids[0]], past_key_values=None)
+            else:
+                prefix_past = self.model_runner.truncate_past_key_values(
+                    past_key_values, new_len - 1)
+                logits, past_key_values = self.model_runner.forward_tokens(
+                    [prompt_token_ids[-1]], past_key_values=prefix_past)
 
         return logits, past_key_values, int(selected_indices.numel())
 

@@ -202,7 +202,7 @@ def main() -> None:
             top_p=cfg.top_p,
             use_cache=True,
             recompute_strategy="query_aware",
-            recomp_ratio=0.16,
+            recomp_ratio=0.30,
             suffix_len=32,
             query_text=query_text,
         )
