@@ -238,7 +238,7 @@ def main() -> None:
             top_p=cfg.top_p,
             use_cache=True,
             recompute_strategy="query_aware",
-            recomp_ratio=0.30,
+            recomp_ratio=0.70,
             suffix_len=32,
             query_text=query_text,
         )
@@ -321,8 +321,8 @@ def main() -> None:
                 "f1": base_f1,
             },
         })
-        if count == 20:
-            break
+        # if count == 20:
+        #     break
 
     output_writer.append_json({
         "event": "run_summary",
