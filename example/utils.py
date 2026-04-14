@@ -2,7 +2,11 @@ import json
 import collections
 import string
 import re
-from rouge_score import rouge_scorer
+
+try:
+    from rouge_score import rouge_scorer
+except ImportError:
+    rouge_scorer = None
 
 def load_dataset(dataset_path):
     print("Loading dataset:", dataset_path)
@@ -74,6 +78,9 @@ def compute_f1(a_pred, a_gold, tokenizer):
     return f1
 
 def compute_rl(pred, gold):
+    if rouge_scorer is None:
+        raise ImportError(
+            "compute_rl 需要依赖 rouge-score，请先执行: pip install rouge-score")
     scorer = rouge_scorer.RougeScorer(['rougeL'], use_stemmer=True)
     rougeL = scorer.score(gold, pred)['rougeL'].fmeasure
     return rougeL
