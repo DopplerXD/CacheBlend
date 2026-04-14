@@ -3,7 +3,6 @@
 import json
 import os
 import sys
-from datetime import datetime
 import importlib.util
 from typing import List, Optional, Tuple
 
@@ -20,7 +19,7 @@ from config import RuntimeConfig
 from engine.inference_engine import InferenceEngine
 from model.yi_model import YiModelRunner
 from schema.types import GenerateRequest
-from utils.experiment_output import ExperimentOutputWriter
+from utils.experiment_output import ExperimentOutputWriter, utc8_now_str
 from utils.logging_utils import setup_logger
 
 _EXAMPLE_UTILS_PATH = os.path.join(EXAMPLE_DIR, "utils.py")
@@ -130,12 +129,12 @@ def main() -> None:
     engine = InferenceEngine(model_runner, kv_cache, logger)
 
     output_writer = ExperimentOutputWriter.create(
-        os.path.join(ROOT_DIR, "outputs"))
+        os.path.join(ROOT_DIR, "outputs"), run_tag="musique")
     output_writer.append_json({
         "event": "run_start",
         "script": "example/blend_musique.py",
         "dataset": "inputs/musique_s.json",
-        "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "started_at": utc8_now_str(),
         "model": cfg.model_name,
         "max_new_tokens": cfg.max_new_tokens,
         "temperature": cfg.temperature,
@@ -284,7 +283,7 @@ def main() -> None:
         "kv_diff_avg_f1": _mean(kvd_f1_list),
         "query_aware_avg_f1": _mean(qaw_f1_list),
         "full_prefill_avg_f1": _mean(base_f1_list),
-        "ended_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "ended_at": utc8_now_str(),
     })
 
 

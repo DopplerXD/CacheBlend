@@ -3,7 +3,6 @@
 import json
 import os
 import sys
-from datetime import datetime
 
 # 允许从项目根目录导入模块（保持 `python example/blend.py` 可直接运行）。
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -15,7 +14,7 @@ from config import RuntimeConfig
 from engine.inference_engine import InferenceEngine
 from model.yi_model import YiModelRunner
 from schema.types import GenerateRequest
-from utils.experiment_output import ExperimentOutputWriter
+from utils.experiment_output import ExperimentOutputWriter, utc8_now_str
 from utils.logging_utils import setup_logger
 
 
@@ -102,19 +101,18 @@ def main() -> None:
     cfg.max_new_tokens = 10
 
     logger = setup_logger("blend_mvp", cfg.log_level)
-    # 按需求：实验脚本不向终端输出，统一写入 outputs/*.output。
-    logger.disabled = True
 
     model_runner = YiModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
                                  logger)
     kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
     engine = InferenceEngine(model_runner, kv_cache, logger)
     output_writer = ExperimentOutputWriter.create(
-        os.path.join(ROOT_DIR, "outputs"))
+        os.path.join(ROOT_DIR, "outputs"), run_tag="blend")
+    logger.info("实验日志文件: %s", output_writer.file_path)
     output_writer.append_json({
         "event": "run_start",
         "script": "example/blend.py",
-        "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "started_at": utc8_now_str(),
         "model": cfg.model_name,
         "max_new_tokens": cfg.max_new_tokens,
         "temperature": cfg.temperature,
@@ -150,8 +148,22 @@ def main() -> None:
             checkpoint_ids=checkpoint_ids,
             target_prompt=final_prompt,
         )
+        logger.info("sample=%d checkpoint=%s prefix_tokens=%d", sample_idx,
+                    best_ckpt_id, best_ckpt_len)
 
-        # 方法 1：高 KV 偏差重算
+        # 方法 1：基线（关闭缓存，完整 prefill）。
+        base_req = GenerateRequest(
+            session_id=f"baseline-{sample_idx}",
+            prompt=final_prompt,
+            max_new_tokens=cfg.max_new_tokens,
+            temperature=cfg.temperature,
+            top_p=cfg.top_p,
+            use_cache=False,
+            recompute_strategy="none",
+        )
+        base_res = engine.generate(base_req)
+
+        # 方法 2：高 KV 偏差重算
         kvd_session_id = f"sample-kvd-{sample_idx}"
         if best_ckpt_id is not None:
             seed_session_from_checkpoint(kv_cache, best_ckpt_id, kvd_session_id)
@@ -169,7 +181,7 @@ def main() -> None:
         )
         kvd_res = engine.generate(kvd_req)
 
-        # 方法 2：Query-aware 重算
+        # 方法 3：Query-aware 重算
         qaw_session_id = f"sample-qaw-{sample_idx}"
         if best_ckpt_id is not None:
             seed_session_from_checkpoint(kv_cache, best_ckpt_id, qaw_session_id)
@@ -187,17 +199,20 @@ def main() -> None:
         )
         qaw_res = engine.generate(qaw_req)
 
-        # 方法 3：基线（关闭缓存，完整 prefill）。
-        base_req = GenerateRequest(
-            session_id=f"baseline-{sample_idx}",
-            prompt=final_prompt,
-            max_new_tokens=cfg.max_new_tokens,
-            temperature=cfg.temperature,
-            top_p=cfg.top_p,
-            use_cache=False,
-            recompute_strategy="none",
+        logger.info(
+            "sample=%d full(ttft=%.4f,total=%.4f) kvd(ttft=%.4f,total=%.4f,recomp=%d,mode=%s) qaw(ttft=%.4f,total=%.4f,recomp=%d,mode=%s)",
+            sample_idx,
+            base_res.first_token_latency_s,
+            base_res.total_latency_s,
+            kvd_res.first_token_latency_s,
+            kvd_res.total_latency_s,
+            kvd_res.recomputed_tokens,
+            kvd_res.recompute_mode,
+            qaw_res.first_token_latency_s,
+            qaw_res.total_latency_s,
+            qaw_res.recomputed_tokens,
+            qaw_res.recompute_mode,
         )
-        base_res = engine.generate(base_req)
 
         kvd_ttft_list.append(kvd_res.first_token_latency_s)
         qaw_ttft_list.append(qaw_res.first_token_latency_s)
@@ -212,6 +227,11 @@ def main() -> None:
             "chunk_num": chunk_num,
             "selected_checkpoint": best_ckpt_id,
             "selected_prefix_tokens": best_ckpt_len,
+            "full_prefill": {
+                "generated_text": base_res.generated_text,
+                "ttft_s": base_res.first_token_latency_s,
+                "total_s": base_res.total_latency_s,
+            },
             "kv_diff": {
                 "generated_text": kvd_res.generated_text,
                 "ttft_s": kvd_res.first_token_latency_s,
@@ -225,11 +245,6 @@ def main() -> None:
                 "total_s": qaw_res.total_latency_s,
                 "reused_prefix_tokens": qaw_res.reused_prefix_tokens,
                 "recomputed_tokens": qaw_res.recomputed_tokens,
-            },
-            "full_prefill": {
-                "generated_text": base_res.generated_text,
-                "ttft_s": base_res.first_token_latency_s,
-                "total_s": base_res.total_latency_s,
             },
         })
 
@@ -248,7 +263,7 @@ def main() -> None:
         if qaw_total_list else None,
         "full_prefill_avg_total_s": (sum(base_total_list) / len(base_total_list))
         if base_total_list else None,
-        "ended_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "ended_at": utc8_now_str(),
     })
 
 
