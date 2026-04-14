@@ -4,12 +4,16 @@ import json
 import os
 import sys
 from datetime import datetime
+import importlib.util
 from typing import List, Optional, Tuple
 
 # 允许从项目根目录导入模块（保持 `python example/blend_musique.py` 可直接运行）。
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
+EXAMPLE_DIR = os.path.dirname(os.path.abspath(__file__))
+if EXAMPLE_DIR not in sys.path:
+    sys.path.insert(0, EXAMPLE_DIR)
 
 from cache.kv_cache import KVCacheManager
 from config import RuntimeConfig
@@ -19,7 +23,17 @@ from schema.types import GenerateRequest
 from utils.experiment_output import ExperimentOutputWriter
 from utils.logging_utils import setup_logger
 
-from example.utils import build_qa_prompt, compute_f1, normalize_question
+_EXAMPLE_UTILS_PATH = os.path.join(EXAMPLE_DIR, "utils.py")
+_EXAMPLE_UTILS_SPEC = importlib.util.spec_from_file_location(
+    "cacheblend_example_utils", _EXAMPLE_UTILS_PATH)
+if _EXAMPLE_UTILS_SPEC is None or _EXAMPLE_UTILS_SPEC.loader is None:
+    raise ImportError(f"无法加载 example/utils.py: {_EXAMPLE_UTILS_PATH}")
+_EXAMPLE_UTILS_MODULE = importlib.util.module_from_spec(_EXAMPLE_UTILS_SPEC)
+_EXAMPLE_UTILS_SPEC.loader.exec_module(_EXAMPLE_UTILS_MODULE)
+
+build_qa_prompt = _EXAMPLE_UTILS_MODULE.build_qa_prompt
+compute_f1 = _EXAMPLE_UTILS_MODULE.compute_f1
+normalize_question = _EXAMPLE_UTILS_MODULE.normalize_question
 
 
 PREFIX_PROMPT = (
