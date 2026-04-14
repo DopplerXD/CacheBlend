@@ -46,55 +46,37 @@ def build_final_prompt(doc_prompts, query_text):
     return build_prefix_prompt(doc_prompts) + f"{query_text.strip()}\n\n回答:"
 
 
-def warm_chunk_checkpoints(engine: InferenceEngine, kv_cache: KVCacheManager,
-                           base_session_id: str, doc_prompts):
-    """按 chunk 边界做 checkpoint：ckpt-1, ckpt-2, ..."""
-    checkpoint_ids = []
-    for i in range(1, len(doc_prompts) + 1):
-        checkpoint_id = f"{base_session_id}-ckpt-{i}"
-        kv_cache.clear(checkpoint_id)
-        checkpoint_prompt = build_prefix_prompt(doc_prompts[:i])
-        warm_req = GenerateRequest(
-            session_id=checkpoint_id,
-            prompt=checkpoint_prompt,
-            max_new_tokens=0,
-            temperature=0.0,
-            top_p=1.0,
-            use_cache=True,
-            recompute_strategy="none",
-        )
-        engine.generate(warm_req)
-        checkpoint_ids.append(checkpoint_id)
-    return checkpoint_ids
-
-
-def select_best_checkpoint(kv_cache: KVCacheManager, model_runner: YiModelRunner,
-                           checkpoint_ids, target_prompt):
-    """从 chunk 边界 checkpoints 中选择最长前缀匹配项。"""
-    target_tokens = model_runner.encode(target_prompt)
-    best_id = None
-    best_len = -1
-    for sid in checkpoint_ids:
-        entry = kv_cache.get(sid)
-        if entry is None:
-            continue
-        cur_len = len(entry.token_ids)
-        if cur_len <= len(target_tokens) and target_tokens[:cur_len] == entry.token_ids:
-            if cur_len > best_len:
-                best_id = sid
-                best_len = cur_len
-    return best_id, best_len
-
-
-def seed_session_from_checkpoint(kv_cache: KVCacheManager, src_session_id: str,
-                                 dst_session_id: str):
-    """将 checkpoint KV 复制到运行 session。"""
+def seed_session_cache(kv_cache: KVCacheManager, src_session_id: str,
+                       dst_session_id: str):
+    """复制一个会话的 KV 到另一个会话。"""
     src = kv_cache.get(src_session_id)
     if src is None:
         return False
     kv_cache.clear(dst_session_id)
     kv_cache.put(dst_session_id, list(src.token_ids), src.past_key_values)
     return True
+
+
+def warm_prompt_cache(engine: InferenceEngine, kv_cache: KVCacheManager,
+                      session_id: str, prompt: str):
+    """将指定 prompt 做预填充并写入缓存会话（max_new_tokens=0）。"""
+    kv_cache.clear(session_id)
+    warm_req = GenerateRequest(
+        session_id=session_id,
+        prompt=prompt,
+        max_new_tokens=0,
+        temperature=0.0,
+        top_p=1.0,
+        use_cache=True,
+        recompute_strategy="none",
+    )
+    return engine.generate(warm_req)
+
+
+def build_stale_prompt(doc_prompts, query_text):
+    """构造与真实请求不同的旧缓存 prompt，确保触发“前缀不匹配重算”分支。"""
+    stale_query = f"请仅用于缓存预热的占位问题：{query_text.strip()}"
+    return build_final_prompt(doc_prompts, stale_query)
 
 
 def main() -> None:
@@ -126,6 +108,7 @@ def main() -> None:
         "event": "run_start",
         "script": "example/blend.py",
         "console_log_file": console_log_path,
+        "experiment_mode": "true_recompute_comparison",
         "started_at": utc8_now_str(),
         "model": cfg.model_name,
         "max_new_tokens": cfg.max_new_tokens,
@@ -133,12 +116,17 @@ def main() -> None:
         "top_p": cfg.top_p,
     })
 
+    reuse_ttft_list = []
+    reuse_total_list = []
     kvd_ttft_list = []
     qaw_ttft_list = []
     base_ttft_list = []
+    reuse_reuse_tokens_list = []
     kvd_total_list = []
     qaw_total_list = []
     base_total_list = []
+    kvd_true_recompute_count = 0
+    qaw_true_recompute_count = 0
 
     for sample_idx in range(1, 11):
         input_path = os.path.join(ROOT_DIR, "inputs", f"{sample_idx}.json")
@@ -151,19 +139,7 @@ def main() -> None:
 
         logger.info("\n===== 样本 %d 开始，chunk_num=%d =====", sample_idx, chunk_num)
         final_prompt = build_final_prompt(doc_prompts, query_text)
-
-        # 先建立一套“按 chunk 边界”的 checkpoint 缓存。
-        checkpoint_base = f"sample-ckpt-{sample_idx}"
-        checkpoint_ids = warm_chunk_checkpoints(engine, kv_cache, checkpoint_base,
-                                                doc_prompts)
-        best_ckpt_id, best_ckpt_len = select_best_checkpoint(
-            kv_cache=kv_cache,
-            model_runner=model_runner,
-            checkpoint_ids=checkpoint_ids,
-            target_prompt=final_prompt,
-        )
-        logger.info("sample=%d checkpoint=%s prefix_tokens=%d", sample_idx,
-                    best_ckpt_id, best_ckpt_len)
+        stale_prompt = build_stale_prompt(doc_prompts, query_text)
 
         # 方法 1：基线（关闭缓存，完整 prefill）。
         base_req = GenerateRequest(
@@ -177,10 +153,30 @@ def main() -> None:
         )
         base_res = engine.generate(base_req)
 
-        # 方法 2：高 KV 偏差重算
+        # 方法 2：full reuse（先对同一 prompt 预填充，再完整复用 KV）。
+        reuse_template_id = f"sample-reuse-template-{sample_idx}"
+        warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
+        reuse_session_id = f"sample-full-reuse-{sample_idx}"
+        seed_session_cache(kv_cache, reuse_template_id, reuse_session_id)
+        reuse_req = GenerateRequest(
+            session_id=reuse_session_id,
+            prompt=final_prompt,
+            max_new_tokens=cfg.max_new_tokens,
+            temperature=cfg.temperature,
+            top_p=cfg.top_p,
+            use_cache=True,
+            recompute_strategy="none",
+        )
+        reuse_res = engine.generate(reuse_req)
+
+        # 准备真实重算对比：先构造同一份“非前缀旧缓存”，分别喂给 kvd / qaw。
+        stale_template_id = f"sample-stale-template-{sample_idx}"
+        stale_warm_res = warm_prompt_cache(engine, kv_cache, stale_template_id,
+                                           stale_prompt)
+
+        # 方法 3：高 KV 偏差重算（从非前缀旧缓存启动）。
         kvd_session_id = f"sample-kvd-{sample_idx}"
-        if best_ckpt_id is not None:
-            seed_session_from_checkpoint(kv_cache, best_ckpt_id, kvd_session_id)
+        seed_session_cache(kv_cache, stale_template_id, kvd_session_id)
         kvd_req = GenerateRequest(
             session_id=kvd_session_id,
             prompt=final_prompt,
@@ -195,10 +191,9 @@ def main() -> None:
         )
         kvd_res = engine.generate(kvd_req)
 
-        # 方法 3：Query-aware 重算
+        # 方法 4：Query-aware 重算（从同一份非前缀旧缓存启动）。
         qaw_session_id = f"sample-qaw-{sample_idx}"
-        if best_ckpt_id is not None:
-            seed_session_from_checkpoint(kv_cache, best_ckpt_id, qaw_session_id)
+        seed_session_cache(kv_cache, stale_template_id, qaw_session_id)
         qaw_req = GenerateRequest(
             session_id=qaw_session_id,
             prompt=final_prompt,
@@ -213,24 +208,42 @@ def main() -> None:
         )
         qaw_res = engine.generate(qaw_req)
 
+        kvd_true_recompute = (kvd_res.recompute_mode == "kv_diff_recompute"
+                              and kvd_res.recomputed_tokens > 0)
+        qaw_true_recompute = (qaw_res.recompute_mode == "query_aware_recompute"
+                              and qaw_res.recomputed_tokens > 0)
+        if kvd_true_recompute:
+            kvd_true_recompute_count += 1
+        if qaw_true_recompute:
+            qaw_true_recompute_count += 1
+
         logger.info(
-            "sample=%d full(ttft=%.4f,total=%.4f) kvd(ttft=%.4f,total=%.4f,recomp=%d,mode=%s) qaw(ttft=%.4f,total=%.4f,recomp=%d,mode=%s)",
+            "sample=%d full_prefill(ttft=%.4f,total=%.4f) full_reuse(ttft=%.4f,total=%.4f,reused=%d,mode=%s) kvd(ttft=%.4f,total=%.4f,recomp=%d,mode=%s,true=%s) qaw(ttft=%.4f,total=%.4f,recomp=%d,mode=%s,true=%s)",
             sample_idx,
             base_res.first_token_latency_s,
             base_res.total_latency_s,
+            reuse_res.first_token_latency_s,
+            reuse_res.total_latency_s,
+            reuse_res.reused_prefix_tokens,
+            reuse_res.recompute_mode,
             kvd_res.first_token_latency_s,
             kvd_res.total_latency_s,
             kvd_res.recomputed_tokens,
             kvd_res.recompute_mode,
+            str(kvd_true_recompute),
             qaw_res.first_token_latency_s,
             qaw_res.total_latency_s,
             qaw_res.recomputed_tokens,
             qaw_res.recompute_mode,
+            str(qaw_true_recompute),
         )
 
+        reuse_ttft_list.append(reuse_res.first_token_latency_s)
         kvd_ttft_list.append(kvd_res.first_token_latency_s)
         qaw_ttft_list.append(qaw_res.first_token_latency_s)
         base_ttft_list.append(base_res.first_token_latency_s)
+        reuse_total_list.append(reuse_res.total_latency_s)
+        reuse_reuse_tokens_list.append(reuse_res.reused_prefix_tokens)
         kvd_total_list.append(kvd_res.total_latency_s)
         qaw_total_list.append(qaw_res.total_latency_s)
         base_total_list.append(base_res.total_latency_s)
@@ -239,12 +252,19 @@ def main() -> None:
             "event": "sample_result",
             "sample_idx": sample_idx,
             "chunk_num": chunk_num,
-            "selected_checkpoint": best_ckpt_id,
-            "selected_prefix_tokens": best_ckpt_len,
+            "stale_cache_prompt_tokens": stale_warm_res.prompt_tokens,
             "full_prefill": {
                 "generated_text": base_res.generated_text,
+                "recompute_mode": base_res.recompute_mode,
                 "ttft_s": base_res.first_token_latency_s,
                 "total_s": base_res.total_latency_s,
+            },
+            "full_reuse": {
+                "generated_text": reuse_res.generated_text,
+                "recompute_mode": reuse_res.recompute_mode,
+                "ttft_s": reuse_res.first_token_latency_s,
+                "total_s": reuse_res.total_latency_s,
+                "reused_prefix_tokens": reuse_res.reused_prefix_tokens,
             },
             "kv_diff": {
                 "generated_text": kvd_res.generated_text,
@@ -253,6 +273,7 @@ def main() -> None:
                 "total_s": kvd_res.total_latency_s,
                 "reused_prefix_tokens": kvd_res.reused_prefix_tokens,
                 "recomputed_tokens": kvd_res.recomputed_tokens,
+                "true_recompute": kvd_true_recompute,
             },
             "query_aware": {
                 "generated_text": qaw_res.generated_text,
@@ -261,24 +282,34 @@ def main() -> None:
                 "total_s": qaw_res.total_latency_s,
                 "reused_prefix_tokens": qaw_res.reused_prefix_tokens,
                 "recomputed_tokens": qaw_res.recomputed_tokens,
+                "true_recompute": qaw_true_recompute,
             },
         })
 
     output_writer.append_json({
         "event": "run_summary",
         "sample_count": len(kvd_ttft_list),
+        "full_reuse_avg_ttft_s": (sum(reuse_ttft_list) / len(reuse_ttft_list))
+        if reuse_ttft_list else None,
         "kv_diff_avg_ttft_s": (sum(kvd_ttft_list) / len(kvd_ttft_list))
         if kvd_ttft_list else None,
         "query_aware_avg_ttft_s": (sum(qaw_ttft_list) / len(qaw_ttft_list))
         if qaw_ttft_list else None,
         "full_prefill_avg_ttft_s": (sum(base_ttft_list) / len(base_ttft_list))
         if base_ttft_list else None,
+        "full_reuse_avg_total_s": (sum(reuse_total_list) / len(reuse_total_list))
+        if reuse_total_list else None,
         "kv_diff_avg_total_s": (sum(kvd_total_list) / len(kvd_total_list))
         if kvd_total_list else None,
         "query_aware_avg_total_s": (sum(qaw_total_list) / len(qaw_total_list))
         if qaw_total_list else None,
         "full_prefill_avg_total_s": (sum(base_total_list) / len(base_total_list))
         if base_total_list else None,
+        "full_reuse_avg_reused_prefix_tokens":
+        (sum(reuse_reuse_tokens_list) / len(reuse_reuse_tokens_list))
+        if reuse_reuse_tokens_list else None,
+        "kvd_true_recompute_count": kvd_true_recompute_count,
+        "qaw_true_recompute_count": qaw_true_recompute_count,
         "ended_at": utc8_now_str(),
     })
 
