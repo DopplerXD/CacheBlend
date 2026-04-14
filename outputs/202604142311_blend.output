@@ -1,0 +1,170 @@
+{"event": "run_start", "script": "example/blend.py", "started_at": "2026-04-14 23:11:35", "model": "/root/models/Yi-6B", "max_new_tokens": 10, "temperature": 0.0, "top_p": 1.0}
+{"event": "sample_result", "sample_idx": 1, "chunk_num": 6, "selected_checkpoint": "sample-ckpt-1-ckpt-6", "selected_prefix_tokens": 3744, "full_prefill": {"generated_text": "1985", "ttft_s": 1.316171996999401, "total_s": 1.5294275409996771}, "kv_diff": {"generated_text": "1985", "ttft_s": 0.058434458000192535, "total_s": 0.2394921830000385, "reused_prefix_tokens": 3744, "recomputed_tokens": 0}, "query_aware": {"generated_text": "1985", "ttft_s": 0.04396802299925184, "total_s": 0.22348839400001452, "reused_prefix_tokens": 3744, "recomputed_tokens": 0}}
+{"event": "sample_result", "sample_idx": 2, "chunk_num": 5, "selected_checkpoint": "sample-ckpt-2-ckpt-5", "selected_prefix_tokens": 3345, "full_prefill": {"generated_text": "Hell Up In Harlem.", "ttft_s": 1.191962988999876, "total_s": 1.40139816699957}, "kv_diff": {"generated_text": "Hell Up In Harlem.", "ttft_s": 0.040881897999497596, "total_s": 0.24853939300010097, "reused_prefix_tokens": 3345, "recomputed_tokens": 0}, "query_aware": {"generated_text": "Hell Up In Harlem.", "ttft_s": 0.04145526800130028, "total_s": 0.25638441699993564, "reused_prefix_tokens": 3345, "recomputed_tokens": 0}}
+{"event": "sample_result", "sample_idx": 3, "chunk_num": 5, "selected_checkpoint": "sample-ckpt-3-ckpt-5", "selected_prefix_tokens": 3290, "full_prefill": {"generated_text": "Cipriano Castro.", "ttft_s": 1.1765215510004055, "total_s": 1.3911231419988326}, "kv_diff": {"generated_text": "Cipriano Castro.", "ttft_s": 0.04263285900015035, "total_s": 0.25411191300008795, "reused_prefix_tokens": 3290, "recomputed_tokens": 0}, "query_aware": {"generated_text": "Cipriano Castro.", "ttft_s": 0.04337640499943518, "total_s": 0.2556432759993186, "reused_prefix_tokens": 3290, "recomputed_tokens": 0}}
+{"event": "sample_result", "sample_idx": 4, "chunk_num": 6, "selected_checkpoint": "sample-ckpt-4-ckpt-6", "selected_prefix_tokens": 3759, "full_prefill": {"generated_text": "Jugband Blues", "ttft_s": 1.323622013998829, "total_s": 1.4770977259995561}, "kv_diff": {"generated_text": "Jugband Blues", "ttft_s": 0.044737303998772404, "total_s": 0.19608142899960512, "reused_prefix_tokens": 3759, "recomputed_tokens": 0}, "query_aware": {"generated_text": "Jugband Blues", "ttft_s": 0.0446900060014741, "total_s": 0.19710329000008642, "reused_prefix_tokens": 3759, "recomputed_tokens": 0}}
+{"event": "sample_result", "sample_idx": 5, "chunk_num": 6, "selected_checkpoint": "sample-ckpt-5-ckpt-6", "selected_prefix_tokens": 3617, "full_prefill": {"generated_text": "", "ttft_s": 1.2956274079988361, "total_s": 1.3198942549988715}, "kv_diff": {"generated_text": "", "ttft_s": 0.04491763900114165, "total_s": 0.06864957200014032, "reused_prefix_tokens": 3617, "recomputed_tokens": 0}, "query_aware": {"generated_text": "", "ttft_s": 0.044130295000286424, "total_s": 0.06806574000074761, "reused_prefix_tokens": 3617, "recomputed_tokens": 0}}
+{"event": "sample_result", "sample_idx": 6, "chunk_num": 5, "selected_checkpoint": "sample-ckpt-6-ckpt-5", "selected_prefix_tokens": 3687, "full_prefill": {"generated_text": "", "ttft_s": 1.2989186710001377, "total_s": 1.3235348560010607}, "kv_diff": {"generated_text": "", "ttft_s": 0.044108600999607006, "total_s": 0.06806086399956257, "reused_prefix_tokens": 3687, "recomputed_tokens": 0}, "query_aware": {"generated_text": "", "ttft_s": 0.04278661199896305, "total_s": 0.06716140800017456, "reused_prefix_tokens": 3687, "recomputed_tokens": 0}}
+{"event": "sample_result", "sample_idx": 7, "chunk_num": 6, "selected_checkpoint": "sample-ckpt-7-ckpt-6", "selected_prefix_tokens": 3811, "full_prefill": {"generated_text": "", "ttft_s": 1.3841090940004506, "total_s": 1.4092507650002517}, "kv_diff": {"generated_text": "", "ttft_s": 0.04676833899975463, "total_s": 0.07209805300044536, "reused_prefix_tokens": 3811, "recomputed_tokens": 0}, "query_aware": {"generated_text": "", "ttft_s": 0.04597479599942744, "total_s": 0.07149089300037303, "reused_prefix_tokens": 3811, "recomputed_tokens": 0}}
+{"event": "sample_result", "sample_idx": 8, "chunk_num": 6, "selected_checkpoint": "sample-ckpt-8-ckpt-6", "selected_prefix_tokens": 3733, "full_prefill": {"generated_text": "√", "ttft_s": 1.3316153749983641, "total_s": 1.5206418829984614}, "kv_diff": {"generated_text": "√", "ttft_s": 0.050583143000039854, "total_s": 0.20235386499916785, "reused_prefix_tokens": 3733, "recomputed_tokens": 0}, "query_aware": {"generated_text": "√", "ttft_s": 0.05018831800043699, "total_s": 0.20935964500131377, "reused_prefix_tokens": 3733, "recomputed_tokens": 0}}
+{"event": "sample_result", "sample_idx": 9, "chunk_num": 5, "selected_checkpoint": "sample-ckpt-9-ckpt-5", "selected_prefix_tokens": 3364, "full_prefill": {"generated_text": "The Abduction Club.", "ttft_s": 1.207886194000821, "total_s": 1.392016521000187}, "kv_diff": {"generated_text": "The Abduction Club", "ttft_s": 0.04328671400071471, "total_s": 0.19427930399979232, "reused_prefix_tokens": 3364, "recomputed_tokens": 0}, "query_aware": {"generated_text": "The Abduction Club", "ttft_s": 0.043281719999868074, "total_s": 0.19352539999999863, "reused_prefix_tokens": 3364, "recomputed_tokens": 0}}
+{"event": "sample_result", "sample_idx": 10, "chunk_num": 6, "selected_checkpoint": "sample-ckpt-10-ckpt-6", "selected_prefix_tokens": 3891, "full_prefill": {"generated_text": "Above Rubies", "ttft_s": 1.3855626830008987, "total_s": 1.5099417580004229}, "kv_diff": {"generated_text": "Above Rubies", "ttft_s": 0.0458950870015542, "total_s": 0.16949007400035043, "reused_prefix_tokens": 3891, "recomputed_tokens": 0}, "query_aware": {"generated_text": "Above Rubies", "ttft_s": 0.045786484000927885, "total_s": 0.16952354699969874, "reused_prefix_tokens": 3891, "recomputed_tokens": 0}}
+{"event": "run_summary", "sample_count": 10, "kv_diff_avg_ttft_s": 0.046224604200142495, "query_aware_avg_ttft_s": 0.04456379270013713, "full_prefill_avg_ttft_s": 1.291199797599802, "kv_diff_avg_total_s": 0.17131566499992915, "query_aware_avg_total_s": 0.17117460100016615, "full_prefill_avg_total_s": 1.427432661399689, "ended_at": "2026-04-14 23:12:13"}
+
+(venv) (yi) root@43b8f2eba4bd:~/github/CacheBlend# python example/blend.py
+2026-04-14 15:11:31 | INFO | blend_mvp | 加载 tokenizer: /root/models/Yi-6B
+2026-04-14 15:11:31 | INFO | blend_mvp | 加载模型: /root/models/Yi-6B, device=cuda, dtype=torch.bfloat16
+Loading checkpoint shards: 100%|██████████████████████████████████████████████████████████████████████████████| 2/2 [00:00<00:00,  7.69it/s]
+2026-04-14 15:11:35 | INFO | blend_mvp | 实验日志文件: /root/github/CacheBlend/outputs/202604142311_blend
+2026-04-14 15:11:35 | INFO | blend_mvp | 
+===== 样本 1 开始，chunk_num=6 =====
+Starting from v4.46, the `logits` model output will have the same type as the model (except at train time, where it will always be FP32)
+2026-04-14 15:11:38 | INFO | blend_mvp | sample=1 checkpoint=sample-ckpt-1-ckpt-6 prefix_tokens=3744
+We detected that you are passing `past_key_values` as a tuple of tuples. This is deprecated and will be removed in v4.47. Please convert your cache or use an appropriate `Cache` class (https://huggingface.co/docs/transformers/kv_cache#legacy-cache-format)
+2026-04-14 15:11:39 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:39 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-kvd-1, 复用前缀 token=3744, 增量 prefill token=52
+2026-04-14 15:11:40 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:40 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-qaw-1, 复用前缀 token=3744, 增量 prefill token=52
+2026-04-14 15:11:40 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:40 | INFO | blend_mvp | sample=1 full(ttft=1.3162,total=1.5294) kvd(ttft=0.0584,total=0.2395,recomp=0,mode=cache_prefix_reuse) qaw(ttft=0.0440,total=0.2235,recomp=0,mode=cache_prefix_reuse)
+2026-04-14 15:11:40 | INFO | blend_mvp | 
+===== 样本 2 开始，chunk_num=5 =====
+2026-04-14 15:11:41 | INFO | blend_mvp | sample=2 checkpoint=sample-ckpt-2-ckpt-5 prefix_tokens=3345
+2026-04-14 15:11:43 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:43 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-kvd-2, 复用前缀 token=3345, 增量 prefill token=57
+2026-04-14 15:11:43 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:43 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-qaw-2, 复用前缀 token=3345, 增量 prefill token=57
+2026-04-14 15:11:43 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:43 | INFO | blend_mvp | sample=2 full(ttft=1.1920,total=1.4014) kvd(ttft=0.0409,total=0.2485,recomp=0,mode=cache_prefix_reuse) qaw(ttft=0.0415,total=0.2564,recomp=0,mode=cache_prefix_reuse)
+2026-04-14 15:11:43 | INFO | blend_mvp | 
+===== 样本 3 开始，chunk_num=5 =====
+2026-04-14 15:11:44 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-1-ckpt-1
+2026-04-14 15:11:44 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-1-ckpt-2
+2026-04-14 15:11:44 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-1-ckpt-3
+2026-04-14 15:11:45 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-1-ckpt-4
+2026-04-14 15:11:45 | INFO | blend_mvp | sample=3 checkpoint=sample-ckpt-3-ckpt-5 prefix_tokens=3290
+2026-04-14 15:11:46 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:46 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-1-ckpt-5
+2026-04-14 15:11:46 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-kvd-3, 复用前缀 token=3290, 增量 prefill token=55
+2026-04-14 15:11:47 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:47 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-1
+2026-04-14 15:11:47 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-qaw-3, 复用前缀 token=3290, 增量 prefill token=55
+2026-04-14 15:11:47 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:47 | INFO | blend_mvp | sample=3 full(ttft=1.1765,total=1.3911) kvd(ttft=0.0426,total=0.2541,recomp=0,mode=cache_prefix_reuse) qaw(ttft=0.0434,total=0.2556,recomp=0,mode=cache_prefix_reuse)
+2026-04-14 15:11:47 | INFO | blend_mvp | 
+===== 样本 4 开始，chunk_num=6 =====
+2026-04-14 15:11:47 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-1-ckpt-6
+2026-04-14 15:11:47 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-1
+2026-04-14 15:11:47 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-2-ckpt-1
+2026-04-14 15:11:48 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-2-ckpt-2
+2026-04-14 15:11:48 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-2-ckpt-3
+2026-04-14 15:11:49 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-2-ckpt-4
+2026-04-14 15:11:49 | INFO | blend_mvp | sample=4 checkpoint=sample-ckpt-4-ckpt-6 prefix_tokens=3759
+2026-04-14 15:11:50 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:50 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-2
+2026-04-14 15:11:50 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-kvd-4, 复用前缀 token=3759, 增量 prefill token=55
+2026-04-14 15:11:51 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:51 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-2-ckpt-5
+2026-04-14 15:11:51 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-qaw-4, 复用前缀 token=3759, 增量 prefill token=55
+2026-04-14 15:11:51 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:51 | INFO | blend_mvp | sample=4 full(ttft=1.3236,total=1.4771) kvd(ttft=0.0447,total=0.1961,recomp=0,mode=cache_prefix_reuse) qaw(ttft=0.0447,total=0.1971,recomp=0,mode=cache_prefix_reuse)
+2026-04-14 15:11:51 | INFO | blend_mvp | 
+===== 样本 5 开始，chunk_num=6 =====
+2026-04-14 15:11:51 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-2
+2026-04-14 15:11:51 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-3-ckpt-1
+2026-04-14 15:11:51 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-3-ckpt-2
+2026-04-14 15:11:52 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-3-ckpt-3
+2026-04-14 15:11:52 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-3-ckpt-4
+2026-04-14 15:11:53 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-3
+2026-04-14 15:11:53 | INFO | blend_mvp | sample=5 checkpoint=sample-ckpt-5-ckpt-6 prefix_tokens=3617
+2026-04-14 15:11:54 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:54 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-3-ckpt-5
+2026-04-14 15:11:54 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-kvd-5, 复用前缀 token=3617, 增量 prefill token=52
+2026-04-14 15:11:54 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:54 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-3
+2026-04-14 15:11:54 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-qaw-5, 复用前缀 token=3617, 增量 prefill token=52
+2026-04-14 15:11:54 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:54 | INFO | blend_mvp | sample=5 full(ttft=1.2956,total=1.3199) kvd(ttft=0.0449,total=0.0686,recomp=0,mode=cache_prefix_reuse) qaw(ttft=0.0441,total=0.0681,recomp=0,mode=cache_prefix_reuse)
+2026-04-14 15:11:54 | INFO | blend_mvp | 
+===== 样本 6 开始，chunk_num=5 =====
+2026-04-14 15:11:54 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-4-ckpt-1
+2026-04-14 15:11:55 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-4-ckpt-2
+2026-04-14 15:11:55 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-4-ckpt-3
+2026-04-14 15:11:55 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-4-ckpt-4
+2026-04-14 15:11:56 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-4-ckpt-5
+2026-04-14 15:11:56 | INFO | blend_mvp | sample=6 checkpoint=sample-ckpt-6-ckpt-5 prefix_tokens=3687
+2026-04-14 15:11:57 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:57 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-4
+2026-04-14 15:11:57 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-kvd-6, 复用前缀 token=3687, 增量 prefill token=59
+2026-04-14 15:11:57 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:57 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-4-ckpt-6
+2026-04-14 15:11:57 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-qaw-6, 复用前缀 token=3687, 增量 prefill token=59
+2026-04-14 15:11:57 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:11:57 | INFO | blend_mvp | sample=6 full(ttft=1.2989,total=1.3235) kvd(ttft=0.0441,total=0.0681,recomp=0,mode=cache_prefix_reuse) qaw(ttft=0.0428,total=0.0672,recomp=0,mode=cache_prefix_reuse)
+2026-04-14 15:11:57 | INFO | blend_mvp | 
+===== 样本 7 开始，chunk_num=6 =====
+2026-04-14 15:11:58 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-4
+2026-04-14 15:11:58 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-5-ckpt-1
+2026-04-14 15:11:58 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-5-ckpt-2
+2026-04-14 15:11:58 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-5-ckpt-3
+2026-04-14 15:11:59 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-5-ckpt-4
+2026-04-14 15:12:00 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-5-ckpt-5
+2026-04-14 15:12:00 | INFO | blend_mvp | sample=7 checkpoint=sample-ckpt-7-ckpt-6 prefix_tokens=3811
+2026-04-14 15:12:01 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:12:01 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-5
+2026-04-14 15:12:01 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-kvd-7, 复用前缀 token=3811, 增量 prefill token=51
+2026-04-14 15:12:01 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:12:01 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-5-ckpt-6
+2026-04-14 15:12:01 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-qaw-7, 复用前缀 token=3811, 增量 prefill token=51
+2026-04-14 15:12:01 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:12:01 | INFO | blend_mvp | sample=7 full(ttft=1.3841,total=1.4093) kvd(ttft=0.0468,total=0.0721,recomp=0,mode=cache_prefix_reuse) qaw(ttft=0.0460,total=0.0715,recomp=0,mode=cache_prefix_reuse)
+2026-04-14 15:12:01 | INFO | blend_mvp | 
+===== 样本 8 开始，chunk_num=6 =====
+2026-04-14 15:12:01 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-5
+2026-04-14 15:12:01 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-6-ckpt-1
+2026-04-14 15:12:02 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-6-ckpt-2
+2026-04-14 15:12:02 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-6-ckpt-3
+2026-04-14 15:12:03 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-6-ckpt-4
+2026-04-14 15:12:03 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-6
+2026-04-14 15:12:03 | INFO | blend_mvp | sample=8 checkpoint=sample-ckpt-8-ckpt-6 prefix_tokens=3733
+2026-04-14 15:12:05 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:12:05 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-6-ckpt-5
+2026-04-14 15:12:05 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-kvd-8, 复用前缀 token=3733, 增量 prefill token=68
+2026-04-14 15:12:05 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:12:05 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-6
+2026-04-14 15:12:05 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-qaw-8, 复用前缀 token=3733, 增量 prefill token=68
+2026-04-14 15:12:05 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:12:05 | INFO | blend_mvp | sample=8 full(ttft=1.3316,total=1.5206) kvd(ttft=0.0506,total=0.2024,recomp=0,mode=cache_prefix_reuse) qaw(ttft=0.0502,total=0.2094,recomp=0,mode=cache_prefix_reuse)
+2026-04-14 15:12:05 | INFO | blend_mvp | 
+===== 样本 9 开始，chunk_num=5 =====
+2026-04-14 15:12:05 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-7-ckpt-1
+2026-04-14 15:12:05 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-7-ckpt-2
+2026-04-14 15:12:06 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-7-ckpt-3
+2026-04-14 15:12:06 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-7-ckpt-4
+2026-04-14 15:12:07 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-7-ckpt-5
+2026-04-14 15:12:07 | INFO | blend_mvp | sample=9 checkpoint=sample-ckpt-9-ckpt-5 prefix_tokens=3364
+2026-04-14 15:12:08 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:12:08 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-7
+2026-04-14 15:12:08 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-kvd-9, 复用前缀 token=3364, 增量 prefill token=55
+2026-04-14 15:12:08 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:12:08 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-7-ckpt-6
+2026-04-14 15:12:08 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-qaw-9, 复用前缀 token=3364, 增量 prefill token=55
+2026-04-14 15:12:09 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:12:09 | INFO | blend_mvp | sample=9 full(ttft=1.2079,total=1.3920) kvd(ttft=0.0433,total=0.1943,recomp=0,mode=cache_prefix_reuse) qaw(ttft=0.0433,total=0.1935,recomp=0,mode=cache_prefix_reuse)
+2026-04-14 15:12:09 | INFO | blend_mvp | 
+===== 样本 10 开始，chunk_num=6 =====
+2026-04-14 15:12:09 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-qaw-7
+2026-04-14 15:12:09 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-8-ckpt-1
+2026-04-14 15:12:09 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-8-ckpt-2
+2026-04-14 15:12:10 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-8-ckpt-3
+2026-04-14 15:12:10 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-8-ckpt-4
+2026-04-14 15:12:11 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-8-ckpt-5
+2026-04-14 15:12:11 | INFO | blend_mvp | sample=10 checkpoint=sample-ckpt-10-ckpt-6 prefix_tokens=3891
+2026-04-14 15:12:13 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:12:13 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-kvd-8
+2026-04-14 15:12:13 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-kvd-10, 复用前缀 token=3891, 增量 prefill token=52
+2026-04-14 15:12:13 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:12:13 | INFO | blend_mvp | KV LRU 淘汰 session_id=sample-ckpt-8-ckpt-6
+2026-04-14 15:12:13 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-qaw-10, 复用前缀 token=3891, 增量 prefill token=52
+2026-04-14 15:12:13 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-14 15:12:13 | INFO | blend_mvp | sample=10 full(ttft=1.3856,total=1.5099) kvd(ttft=0.0459,total=0.1695,recomp=0,mode=cache_prefix_reuse) qaw(ttft=0.0458,total=0.1695,recomp=0,mode=cache_prefix_reuse)
