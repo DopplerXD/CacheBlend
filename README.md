@@ -1,43 +1,71 @@
-# CacheBlend (Under Construction): 
+# CacheBlend MVP（Transformers + Yi-6B + 内存KV缓存）
 
-This is the code repo for [CacheBlend: Fast Large Language Model Serving with Cached Knowledge Fusion](https://arxiv.org/pdf/2405.16444). The current implementation is based on [vLLM](https://github.com/vllm-project/vllm/tree/main).
+本分支已移除 `vLLM/PagedAttention` 相关实现，目标是先跑通一个最小可用版本：
 
+1. 基于 `transformers` 加载 `Yi-6B`
+2. 自实现会话级 KV 缓存（内存 + LRU + TTL）
+3. 支持 prefill/decode 主链路
+4. 预留后续 `query-aware token selection recompute` 扩展位
 
-### The newest updates will always be at [LMCache](https://github.com/LMCache/LMCache). Stay tuned !!!
+## 目录结构
 
-## Installation
-`Python>=3.9` and `CUDA >= 12.1` are required. An Nvidia GPU with `>=40 GB` memory is recommended.
-To install CacheBlend depenencies:
+```text
+app.py                      # 单次请求 CLI 入口
+config.py                   # 运行配置
+model/yi_model.py           # 模型封装
+cache/kv_cache.py           # 简单 LRU KV 缓存
+engine/inference_engine.py  # 主链路引擎
+schema/types.py             # 请求/响应结构
+utils/logging_utils.py      # 日志工具
+example/blend.py            # 按原 blend 链路的对比示例
+inputs/*.json               # 示例输入数据
 ```
-git clone git@github.com:YaoJiayi/CacheBlend.git
-cd CacheBlend/vllm_blend
-pip install -e .
-cd ..
+
+## 安装
+
+```bash
 pip install -r requirements.txt
 ```
 
+## 快速运行
 
-## Example run
-### Run LLM inference with CacheBlend
+### 1) 单次请求
+
+```bash
+python app.py --prompt "介绍一下CacheBlend的思路" --session-id demo
 ```
+
+启用“高 KV 偏差 token 重算”实验路径：
+
+```bash
+python app.py \
+  --prompt "介绍一下CacheBlend的思路" \
+  --session-id demo \
+  --recompute-strategy kv_diff \
+  --recomp-ratio 0.16 \
+  --suffix-len 32
+```
+
+启用“Query-aware 选择性重算”实验路径：
+
+```bash
+python app.py \
+  --prompt "介绍一下CacheBlend的思路" \
+  --query-text "CacheBlend的核心机制是什么" \
+  --session-id demo \
+  --recompute-strategy query_aware \
+  --recomp-ratio 0.16 \
+  --suffix-len 32
+```
+
+### 2) 示例链路（缓存路径 vs 全量prefill）
+
+```bash
 python example/blend.py
 ```
 
-## Run Musique dataset
-### Compare LLM inference with CacheBlend and normal prefill
-```
-python example/blend_musique.py
-```
-To run datasets other than musique, please replace `musique` with `samsum` or `wikimqa` in the above command.
-## References
-```
-@misc{yao2024cacheblendfastlargelanguage,
-      title={CacheBlend: Fast Large Language Model Serving for RAG with Cached Knowledge Fusion}, 
-      author={Jiayi Yao and Hanchen Li and Yuhan Liu and Siddhant Ray and Yihua Cheng and Qizheng Zhang and Kuntai Du and Shan Lu and Junchen Jiang},
-      year={2024},
-      eprint={2405.16444},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2405.16444}, 
-}
-```
+## 说明
+
+- 当前版本只做 MVP，不含并发调度、分页缓存、生产级容错。
+- KV 缓存为进程内内存缓存；重启进程后缓存会丢失。
+- 已支持两种实验策略：`kv_diff` 与 `query_aware`（`engine/inference_engine.py`）。

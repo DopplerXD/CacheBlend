@@ -1,1 +1,4 @@
-rouge_score
+torch
+transformers>=4.38.0
+accelerate
+sentencepiece
