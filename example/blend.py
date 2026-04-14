@@ -1,6 +1,7 @@
 """MVP 示例：按旧 blend.py 链路演示“缓存路径 vs 全量 prefill”。"""
 
 import json
+import logging
 import os
 import sys
 
@@ -100,18 +101,31 @@ def main() -> None:
     cfg = RuntimeConfig()
     cfg.max_new_tokens = 10
 
+    output_writer = ExperimentOutputWriter.create(
+        os.path.join(ROOT_DIR, "outputs"), run_tag="blend")
+    console_log_path = output_writer.file_path.replace(".output",
+                                                        "_console.output")
     logger = setup_logger("blend_mvp", cfg.log_level)
+    # 将“控制台风格日志”改为写入文件，不输出到终端。
+    for h in list(logger.handlers):
+        logger.removeHandler(h)
+    file_handler = logging.FileHandler(console_log_path, encoding="utf-8")
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+                          datefmt="%Y-%m-%d %H:%M:%S"))
+    logger.addHandler(file_handler)
+    logger.propagate = False
 
     model_runner = YiModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
                                  logger)
     kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
     engine = InferenceEngine(model_runner, kv_cache, logger)
-    output_writer = ExperimentOutputWriter.create(
-        os.path.join(ROOT_DIR, "outputs"), run_tag="blend")
-    logger.info("实验日志文件: %s", output_writer.file_path)
+    logger.info("实验结构化日志文件: %s", output_writer.file_path)
+    logger.info("实验控制台风格日志文件: %s", console_log_path)
     output_writer.append_json({
         "event": "run_start",
         "script": "example/blend.py",
+        "console_log_file": console_log_path,
         "started_at": utc8_now_str(),
         "model": cfg.model_name,
         "max_new_tokens": cfg.max_new_tokens,
@@ -234,6 +248,7 @@ def main() -> None:
             },
             "kv_diff": {
                 "generated_text": kvd_res.generated_text,
+                "recompute_mode": kvd_res.recompute_mode,
                 "ttft_s": kvd_res.first_token_latency_s,
                 "total_s": kvd_res.total_latency_s,
                 "reused_prefix_tokens": kvd_res.reused_prefix_tokens,
@@ -241,6 +256,7 @@ def main() -> None:
             },
             "query_aware": {
                 "generated_text": qaw_res.generated_text,
+                "recompute_mode": qaw_res.recompute_mode,
                 "ttft_s": qaw_res.first_token_latency_s,
                 "total_s": qaw_res.total_latency_s,
                 "reused_prefix_tokens": qaw_res.reused_prefix_tokens,

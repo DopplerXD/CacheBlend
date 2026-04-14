@@ -33,7 +33,7 @@ class ExperimentOutputWriter:
     def create(cls, output_dir: str, run_tag: str) -> "ExperimentOutputWriter":
         os.makedirs(output_dir, exist_ok=True)
         safe_tag = (run_tag or "run").strip().replace(" ", "_")
-        filename = f"{utc8_now().strftime('%Y%m%d%H%M')}_{safe_tag}"
+        filename = f"{utc8_now().strftime('%Y%m%d%H%M')}_{safe_tag}.output"
         return cls(output_dir=output_dir, file_path=os.path.join(output_dir, filename))
 
     def append_line(self, text: str) -> None:
