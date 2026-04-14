@@ -102,7 +102,8 @@ def main() -> None:
     cfg.max_new_tokens = 10
 
     logger = setup_logger("blend_mvp", cfg.log_level)
-    logger.info("启动 MVP 示例，模型=%s", cfg.model_name)
+    # 按需求：实验脚本不向终端输出，统一写入 outputs/*.output。
+    logger.disabled = True
 
     model_runner = YiModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
                                  logger)
@@ -110,9 +111,9 @@ def main() -> None:
     engine = InferenceEngine(model_runner, kv_cache, logger)
     output_writer = ExperimentOutputWriter.create(
         os.path.join(ROOT_DIR, "outputs"))
-    logger.info("实验输出文件: %s", output_writer.file_path)
     output_writer.append_json({
         "event": "run_start",
+        "script": "example/blend.py",
         "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "model": cfg.model_name,
         "max_new_tokens": cfg.max_new_tokens,
@@ -149,11 +150,6 @@ def main() -> None:
             checkpoint_ids=checkpoint_ids,
             target_prompt=final_prompt,
         )
-        if best_ckpt_id is None:
-            logger.warning("样本 %d 未找到可匹配 checkpoint，将退化为无缓存路径", sample_idx)
-        else:
-            logger.info("样本 %d 选中 checkpoint=%s, prefix_tokens=%d", sample_idx,
-                        best_ckpt_id, best_ckpt_len)
 
         # 方法 1：高 KV 偏差重算
         kvd_session_id = f"sample-kvd-{sample_idx}"
@@ -202,25 +198,6 @@ def main() -> None:
             recompute_strategy="none",
         )
         base_res = engine.generate(base_req)
-
-        print(f"[Sample {sample_idx}] KV-diff generation: {kvd_res.generated_text}")
-        print(
-            f"[Sample {sample_idx}] KV-diff TTFT: {kvd_res.first_token_latency_s:.4f}s | "
-            f"Total: {kvd_res.total_latency_s:.4f}s | Reused: {kvd_res.reused_prefix_tokens} | "
-            f"Mode: {kvd_res.recompute_mode} | Recomputed: {kvd_res.recomputed_tokens}"
-        )
-        print(f"[Sample {sample_idx}] Query-aware generation: {qaw_res.generated_text}")
-        print(
-            f"[Sample {sample_idx}] Query-aware TTFT: {qaw_res.first_token_latency_s:.4f}s | "
-            f"Total: {qaw_res.total_latency_s:.4f}s | Reused: {qaw_res.reused_prefix_tokens} | "
-            f"Mode: {qaw_res.recompute_mode} | Recomputed: {qaw_res.recomputed_tokens}"
-        )
-        print(f"[Sample {sample_idx}] Normal generation: {base_res.generated_text}")
-        print(
-            f"[Sample {sample_idx}] TTFT full prefill: {base_res.first_token_latency_s:.4f}s | "
-            f"Total: {base_res.total_latency_s:.4f}s"
-        )
-        print("------------")
 
         kvd_ttft_list.append(kvd_res.first_token_latency_s)
         qaw_ttft_list.append(qaw_res.first_token_latency_s)

@@ -1,135 +1,278 @@
-from vllm import LLM, SamplingParams
-import torch
+"""MusiQue 实验脚本：三种策略对比（仅落盘日志，不向终端输出）。"""
+
 import json
-import numpy as np
-from transformers import AutoTokenizer
-from utils import load_dataset, normalize_question, build_qa_prompt, compute_f1
-from pathlib import Path
+import os
+import sys
+from datetime import datetime
+from typing import List, Optional, Tuple
 
-eval_dataset = load_dataset("inputs/musique_s.json")
+# 允许从项目根目录导入模块（保持 `python example/blend_musique.py` 可直接运行）。
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
-llm = LLM(model="mistralai/Mistral-7B-Instruct-v0.2", gpu_memory_utilization=0.5,
-          #tokenizer=tokenizer,
-          )
-tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2")
-llm.set_tokenizer(tokenizer)
+from cache.kv_cache import KVCacheManager
+from config import RuntimeConfig
+from engine.inference_engine import InferenceEngine
+from model.yi_model import YiModelRunner
+from schema.types import GenerateRequest
+from utils.experiment_output import ExperimentOutputWriter
+from utils.logging_utils import setup_logger
 
-prefix_prompt = "You will be asked a question after reading several passages. Please directly answer the question based on the given passages. Do NOT repeat the question. The answer should be within 5 words..\nPassages:\n"
-query_prompt = "\n\nAnswer the question directly based on the given passages. Do NOT repeat the question. The answer should be within 5 words. \nQuestion:"
+from example.utils import build_qa_prompt, compute_f1, normalize_question
 
-ttft_blend = []
-ttft_full = []
-f1_blend = []
-f1_full = []
 
-for ex in eval_dataset:
-    answers = ex["answers"]
-    doc_prompts, q_prompt = build_qa_prompt(ex, query_prompt)
-    doc_chunk_ids = [tokenizer.encode(doc)[1:] for doc in doc_prompts]
-    q_ids = tokenizer.encode(q_prompt)[1:]
+PREFIX_PROMPT = (
+    "You will be asked a question after reading several passages. "
+    "Please directly answer the question based on the given passages. "
+    "Do NOT repeat the question. The answer should be within 5 words.\nPassages:\n"
+)
+QUERY_PROMPT = (
+    "\n\nAnswer the question directly based on the given passages. "
+    "Do NOT repeat the question. The answer should be within 5 words. \nQuestion:"
+)
 
-    #import pdb
-    #pdb.set_trace()
-    
-    #while len(list(chain.from_iterable(doc_chunk_ids))) > max_ctx_len:
-    #    del_idx = len(doc_chunk_ids)-1
-    #    del doc_chunk_ids[del_idx]
-    # Create a sampling params object.
-    sampling_params = SamplingParams(temperature=0, max_tokens=1)
 
-    # Create an tokenizer and LLM.
-    cache_fuse_metadata = llm.llm_engine.model_executor.driver_worker.model_runner.model.model.cache_fuse_metadata
-    cache_fuse_metadata['collect'] = False
-    cache_fuse_metadata['check'] = False
+def _mean(values: List[float]) -> Optional[float]:
+    if not values:
+        return None
+    return sum(values) / len(values)
 
-    #s_start_full = [733, 4138, 28793] + tokenizer.encode(prefix_prompt)[1:]
-    s_start_full = [733, 16289, 28793] + tokenizer.encode(prefix_prompt)[1:]
-    s_start_len = len(s_start_full) + 1
 
-    #s_start = [518, 25580, 29962]
-    s_start = []
-    s_start_1_len = len(s_start) + 1
+def build_prefix_prompt(doc_prompts: List[str]) -> str:
+    """构造文档前缀，作为 chunk checkpoint 的可复用前缀。"""
+    return PREFIX_PROMPT + "".join(doc_prompts)
 
-    #s_end = [518, 29914, 25580, 29962]
-    s_end = [733, 28748, 16289, 28793]
-    s_end_len = len(s_end)
-    old_kvs = []
 
-    doc_chunk_ids = [s_start+chunk_ids for chunk_ids in doc_chunk_ids]
-    doc_chunk_ids = [s_start_full] + doc_chunk_ids
-    doc_chunk_ids = doc_chunk_ids + [s_start+q_ids+s_end]
+def build_final_prompt(doc_prompts: List[str], q_prompt: str) -> str:
+    """构造最终问答 prompt。"""
+    return build_prefix_prompt(doc_prompts) + q_prompt
 
-    last_len = len([q_ids+s_end])
 
-    cache_fuse_metadata['collect'] = True
-    cache_fuse_metadata["check"] = False
-    num_layer = 32
-    chunk_past_key_values = []
-    
-    # Concatenate old KVs
-    for i in range(len(doc_chunk_ids)):
-        prompts = [tokenizer.decode(doc_chunk_ids[i])]
-        llm.generate(prompts, sampling_params)
-        
-        llm_layers = llm.llm_engine.model_executor.driver_worker.model_runner.model.model.layers
-        for j in range(num_layer):
-            past_key_values = llm_layers[j].self_attn.hack_kv
-            if i == 0:
-                temp_k = past_key_values[0][:s_start_len].clone() # do not chage with s_start_1
-                temp_v = past_key_values[1][:s_start_len].clone()
-            else:
-                temp_k = past_key_values[0][s_start_1_len:len(doc_chunk_ids[i])+1].clone()
-                temp_v = past_key_values[1][s_start_1_len:len(doc_chunk_ids[i])+1].clone()    
+def warm_chunk_checkpoints(engine: InferenceEngine, kv_cache: KVCacheManager,
+                           base_session_id: str,
+                           doc_prompts: List[str]) -> List[str]:
+    """按 chunk 边界建立 checkpoint：ckpt-1, ckpt-2, ..."""
+    checkpoint_ids = []
+    for i in range(1, len(doc_prompts) + 1):
+        checkpoint_id = f"{base_session_id}-ckpt-{i}"
+        kv_cache.clear(checkpoint_id)
+        checkpoint_prompt = build_prefix_prompt(doc_prompts[:i])
+        warm_req = GenerateRequest(
+            session_id=checkpoint_id,
+            prompt=checkpoint_prompt,
+            max_new_tokens=0,
+            temperature=0.0,
+            top_p=1.0,
+            use_cache=True,
+            recompute_strategy="none",
+        )
+        engine.generate(warm_req)
+        checkpoint_ids.append(checkpoint_id)
+    return checkpoint_ids
 
-            if i == 0:
-                chunk_past_key_values.append([temp_k, temp_v])
-            else:
-                chunk_past_key_values[j][0] = torch.cat((chunk_past_key_values[j][0],temp_k), dim=0)
-                chunk_past_key_values[j][1] = torch.cat((chunk_past_key_values[j][1],temp_v), dim=0)
 
-        llm.llm_engine.model_executor.driver_worker.model_runner.model.model.old_kvs = chunk_past_key_values
-        
-    input_ids = []
+def select_best_checkpoint(kv_cache: KVCacheManager, model_runner: YiModelRunner,
+                           checkpoint_ids: List[str],
+                           target_prompt: str) -> Tuple[Optional[str], int]:
+    """从 checkpoints 中选最长前缀匹配项。"""
+    target_tokens = model_runner.encode(target_prompt)
+    best_id = None
+    best_len = -1
+    for sid in checkpoint_ids:
+        entry = kv_cache.get(sid)
+        if entry is None:
+            continue
+        cur_len = len(entry.token_ids)
+        if cur_len <= len(target_tokens) and target_tokens[:cur_len] == entry.token_ids:
+            if cur_len > best_len:
+                best_id = sid
+                best_len = cur_len
+    return best_id, best_len
 
-    for i in range(len(doc_chunk_ids)):
-        if i == 0:
-            temp_ids = doc_chunk_ids[i]
-        else:
-            temp_ids = doc_chunk_ids[i][s_start_1_len-1:]
-        input_ids += temp_ids
-        
-    input_prompt = tokenizer.decode(input_ids)
-    
-    sampling_params = SamplingParams(temperature=0, max_tokens=32)
-    cache_fuse_metadata["check"] = True
-    cache_fuse_metadata['collect'] = False
-    cache_fuse_metadata['suffix_len'] = last_len
-    
-    output = llm.generate([input_prompt], sampling_params)
-    res = output[0].outputs[0].text
-    print(f"Cached generation: {res}")
-    ttft = output[0].metrics.first_token_time-output[0].metrics.first_scheduled_time
-    print(f"TTFT with cache: {ttft}")
-    ttft_blend.append(ttft)
-    f1 = max([compute_f1(res, answer, tokenizer) for answer in answers])
-    f1_blend.append(f1)
 
-    
-    sampling_params = SamplingParams(temperature=0, max_tokens=32)
-    cache_fuse_metadata["check"] = False
-    cache_fuse_metadata['collect'] = False
-    output = llm.generate([input_prompt], sampling_params)
-    res = output[0].outputs[0].text
-    print(f"Normal generation: {res}")
-    ttft = output[0].metrics.first_token_time-output[0].metrics.first_scheduled_time
-    print(f"TTFT with full prefill: {ttft}")
-    ttft_full.append(ttft)
-    f1 = max([compute_f1(res, answer, tokenizer) for answer in answers])
-    f1_full.append(f1)
-    print("------------")
+def seed_session_from_checkpoint(kv_cache: KVCacheManager, src_session_id: str,
+                                 dst_session_id: str) -> bool:
+    """将 checkpoint KV 复制到运行 session。"""
+    src = kv_cache.get(src_session_id)
+    if src is None:
+        return False
+    kv_cache.clear(dst_session_id)
+    kv_cache.put(dst_session_id, list(src.token_ids), src.past_key_values)
+    return True
 
-print("---------------Result Summary---------------------")
-print(f"TTFT with cache: {np.mean(ttft_blend)}")
-print(f"TTFT with full prefill: {np.mean(ttft_full)}")
-print(f"F1 with cache: {np.mean(f1_blend)}")
-print(f"F1 with full prefill: {np.mean(f1_full)}")
+
+def main() -> None:
+    cfg = RuntimeConfig()
+    cfg.max_new_tokens = 32
+
+    # 按需求：脚本不向终端输出，统一写入 outputs/*.output。
+    logger = setup_logger("blend_musique", cfg.log_level)
+    logger.disabled = True
+
+    model_runner = YiModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
+                                 logger)
+    kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
+    engine = InferenceEngine(model_runner, kv_cache, logger)
+
+    output_writer = ExperimentOutputWriter.create(
+        os.path.join(ROOT_DIR, "outputs"))
+    output_writer.append_json({
+        "event": "run_start",
+        "script": "example/blend_musique.py",
+        "dataset": "inputs/musique_s.json",
+        "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "model": cfg.model_name,
+        "max_new_tokens": cfg.max_new_tokens,
+        "temperature": cfg.temperature,
+        "top_p": cfg.top_p,
+    })
+
+    dataset_path = os.path.join(ROOT_DIR, "inputs", "musique_s.json")
+    with open(dataset_path, "r", encoding="utf-8") as f:
+        eval_dataset = json.load(f)
+
+    kvd_ttft_list: List[float] = []
+    qaw_ttft_list: List[float] = []
+    base_ttft_list: List[float] = []
+    kvd_total_list: List[float] = []
+    qaw_total_list: List[float] = []
+    base_total_list: List[float] = []
+    kvd_f1_list: List[float] = []
+    qaw_f1_list: List[float] = []
+    base_f1_list: List[float] = []
+
+    for sample_idx, ex in enumerate(eval_dataset, start=1):
+        answers = ex.get("answers", [])
+        doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
+        query_text = normalize_question(ex.get("question", ""))
+        final_prompt = build_final_prompt(doc_prompts, q_prompt)
+
+        checkpoint_base = f"musique-ckpt-{sample_idx}"
+        checkpoint_ids = warm_chunk_checkpoints(engine, kv_cache, checkpoint_base,
+                                                doc_prompts)
+        best_ckpt_id, best_ckpt_len = select_best_checkpoint(
+            kv_cache=kv_cache,
+            model_runner=model_runner,
+            checkpoint_ids=checkpoint_ids,
+            target_prompt=final_prompt,
+        )
+
+        # 方法 1：高 KV 偏差重算。
+        kvd_session_id = f"musique-kvd-{sample_idx}"
+        if best_ckpt_id is not None:
+            seed_session_from_checkpoint(kv_cache, best_ckpt_id, kvd_session_id)
+        kvd_req = GenerateRequest(
+            session_id=kvd_session_id,
+            prompt=final_prompt,
+            max_new_tokens=cfg.max_new_tokens,
+            temperature=cfg.temperature,
+            top_p=cfg.top_p,
+            use_cache=True,
+            recompute_strategy="kv_diff",
+            recomp_ratio=0.16,
+            suffix_len=32,
+            query_text=query_text,
+        )
+        kvd_res = engine.generate(kvd_req)
+
+        # 方法 2：Query-aware 重算。
+        qaw_session_id = f"musique-qaw-{sample_idx}"
+        if best_ckpt_id is not None:
+            seed_session_from_checkpoint(kv_cache, best_ckpt_id, qaw_session_id)
+        qaw_req = GenerateRequest(
+            session_id=qaw_session_id,
+            prompt=final_prompt,
+            max_new_tokens=cfg.max_new_tokens,
+            temperature=cfg.temperature,
+            top_p=cfg.top_p,
+            use_cache=True,
+            recompute_strategy="query_aware",
+            recomp_ratio=0.16,
+            suffix_len=32,
+            query_text=query_text,
+        )
+        qaw_res = engine.generate(qaw_req)
+
+        # 方法 3：基线（关闭缓存，完整 prefill）。
+        base_req = GenerateRequest(
+            session_id=f"musique-baseline-{sample_idx}",
+            prompt=final_prompt,
+            max_new_tokens=cfg.max_new_tokens,
+            temperature=cfg.temperature,
+            top_p=cfg.top_p,
+            use_cache=False,
+            recompute_strategy="none",
+        )
+        base_res = engine.generate(base_req)
+
+        kvd_ttft_list.append(kvd_res.first_token_latency_s)
+        qaw_ttft_list.append(qaw_res.first_token_latency_s)
+        base_ttft_list.append(base_res.first_token_latency_s)
+        kvd_total_list.append(kvd_res.total_latency_s)
+        qaw_total_list.append(qaw_res.total_latency_s)
+        base_total_list.append(base_res.total_latency_s)
+
+        kvd_f1 = max([compute_f1(kvd_res.generated_text, a, model_runner.tokenizer)
+                      for a in answers]) if answers else None
+        qaw_f1 = max([compute_f1(qaw_res.generated_text, a, model_runner.tokenizer)
+                      for a in answers]) if answers else None
+        base_f1 = max([compute_f1(base_res.generated_text, a, model_runner.tokenizer)
+                       for a in answers]) if answers else None
+        if kvd_f1 is not None:
+            kvd_f1_list.append(kvd_f1)
+        if qaw_f1 is not None:
+            qaw_f1_list.append(qaw_f1)
+        if base_f1 is not None:
+            base_f1_list.append(base_f1)
+
+        output_writer.append_json({
+            "event": "sample_result",
+            "sample_idx": sample_idx,
+            "chunk_num": len(doc_prompts),
+            "question": ex.get("question", ""),
+            "answers": answers,
+            "selected_checkpoint": best_ckpt_id,
+            "selected_prefix_tokens": best_ckpt_len,
+            "kv_diff": {
+                "generated_text": kvd_res.generated_text,
+                "ttft_s": kvd_res.first_token_latency_s,
+                "total_s": kvd_res.total_latency_s,
+                "reused_prefix_tokens": kvd_res.reused_prefix_tokens,
+                "recomputed_tokens": kvd_res.recomputed_tokens,
+                "f1": kvd_f1,
+            },
+            "query_aware": {
+                "generated_text": qaw_res.generated_text,
+                "ttft_s": qaw_res.first_token_latency_s,
+                "total_s": qaw_res.total_latency_s,
+                "reused_prefix_tokens": qaw_res.reused_prefix_tokens,
+                "recomputed_tokens": qaw_res.recomputed_tokens,
+                "f1": qaw_f1,
+            },
+            "full_prefill": {
+                "generated_text": base_res.generated_text,
+                "ttft_s": base_res.first_token_latency_s,
+                "total_s": base_res.total_latency_s,
+                "f1": base_f1,
+            },
+        })
+
+    output_writer.append_json({
+        "event": "run_summary",
+        "sample_count": len(eval_dataset),
+        "kv_diff_avg_ttft_s": _mean(kvd_ttft_list),
+        "query_aware_avg_ttft_s": _mean(qaw_ttft_list),
+        "full_prefill_avg_ttft_s": _mean(base_ttft_list),
+        "kv_diff_avg_total_s": _mean(kvd_total_list),
+        "query_aware_avg_total_s": _mean(qaw_total_list),
+        "full_prefill_avg_total_s": _mean(base_total_list),
+        "kv_diff_avg_f1": _mean(kvd_f1_list),
+        "query_aware_avg_f1": _mean(qaw_f1_list),
+        "full_prefill_avg_f1": _mean(base_f1_list),
+        "ended_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+
+
+if __name__ == "__main__":
+    main()
