@@ -1,10 +1,13 @@
 """MusiQue 速度-质量曲线脚本：仅输出每个 recomp_ratio 的 run_summary。"""
 
+import gc
 import importlib.util
 import json
 import os
 import sys
-from typing import List, Optional
+from typing import Dict, List, Optional
+
+import torch
 
 # 允许从项目根目录导入模块（保持 `python example/blend_musique_curve.py` 可直接运行）。
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -97,6 +100,168 @@ def ratio_grid() -> List[float]:
     return [round(0.15 + i * 0.05, 2) for i in range(14)]
 
 
+def cleanup_group_runtime(kv_cache: Optional[KVCacheManager],
+                          engine: Optional[InferenceEngine]) -> None:
+    """组间清理：释放会话 KV 并触发 CUDA cache 回收。"""
+    if kv_cache is not None:
+        kv_cache._store.clear()  # pylint: disable=protected-access
+    del engine
+    del kv_cache
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def get_cuda_mem_mb() -> Optional[Dict[str, float]]:
+    """读取当前 CUDA 显存信息（MB）。"""
+    if not torch.cuda.is_available():
+        return None
+    free_bytes, total_bytes = torch.cuda.mem_get_info()
+    allocated_bytes = torch.cuda.memory_allocated()
+    reserved_bytes = torch.cuda.memory_reserved()
+    return {
+        "allocated_mb": allocated_bytes / 1024 / 1024,
+        "reserved_mb": reserved_bytes / 1024 / 1024,
+        "free_mb": free_bytes / 1024 / 1024,
+        "total_mb": total_bytes / 1024 / 1024,
+    }
+
+
+def format_cuda_mem(mem: Optional[Dict[str, float]]) -> str:
+    if mem is None:
+        return "cuda=unavailable"
+    return (
+        f"allocated={mem['allocated_mb']:.1f}MB "
+        f"reserved={mem['reserved_mb']:.1f}MB "
+        f"free={mem['free_mb']:.1f}MB "
+        f"total={mem['total_mb']:.1f}MB"
+    )
+
+
+def run_fixed_baselines(
+    eval_dataset: List[Dict],
+    cfg: RuntimeConfig,
+    model_runner: YiModelRunner,
+    logger,
+    sample_limit: int,
+) -> Dict[str, Optional[float]]:
+    """仅运行一次 full_reuse / kv_diff / full_prefill，供全部 ratio 复用。"""
+    kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
+    engine = InferenceEngine(model_runner, kv_cache, logger)
+
+    reuse_ttft_list: List[float] = []
+    kvd_ttft_list: List[float] = []
+    base_ttft_list: List[float] = []
+    reuse_total_list: List[float] = []
+    kvd_total_list: List[float] = []
+    base_total_list: List[float] = []
+    reuse_f1_list: List[float] = []
+    kvd_f1_list: List[float] = []
+    base_f1_list: List[float] = []
+    kvd_true_recompute_count = 0
+
+    count = 0
+    try:
+        for sample_idx, ex in enumerate(eval_dataset, start=1):
+            if count >= sample_limit:
+                break
+            count += 1
+
+            answers = ex.get("answers", [])
+            doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
+            query_text = normalize_question(ex.get("question", ""))
+            final_prompt = build_final_prompt(doc_prompts, q_prompt)
+            stale_prompt = build_stale_prompt(doc_prompts, query_text)
+
+            # 1) full reuse
+            reuse_template_id = f"baseline-reuse-template-{sample_idx}"
+            warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
+            reuse_session_id = f"baseline-reuse-{sample_idx}"
+            seed_session_cache(kv_cache, reuse_template_id, reuse_session_id)
+            reuse_req = GenerateRequest(
+                session_id=reuse_session_id,
+                prompt=final_prompt,
+                max_new_tokens=cfg.max_new_tokens,
+                temperature=cfg.temperature,
+                top_p=cfg.top_p,
+                use_cache=True,
+                recompute_strategy="none",
+            )
+            reuse_res = engine.generate(reuse_req)
+
+            # 2) kv_diff
+            stale_template_id = f"baseline-stale-template-{sample_idx}"
+            warm_prompt_cache(engine, kv_cache, stale_template_id, stale_prompt)
+            kvd_session_id = f"baseline-kvd-{sample_idx}"
+            seed_session_cache(kv_cache, stale_template_id, kvd_session_id)
+            kvd_req = GenerateRequest(
+                session_id=kvd_session_id,
+                prompt=final_prompt,
+                max_new_tokens=cfg.max_new_tokens,
+                temperature=cfg.temperature,
+                top_p=cfg.top_p,
+                use_cache=True,
+                recompute_strategy="kv_diff",
+                recomp_ratio=0.16,
+                suffix_len=32,
+                query_text=query_text,
+            )
+            kvd_res = engine.generate(kvd_req)
+
+            # 3) full prefill
+            base_req = GenerateRequest(
+                session_id=f"baseline-prefill-{sample_idx}",
+                prompt=final_prompt,
+                max_new_tokens=cfg.max_new_tokens,
+                temperature=cfg.temperature,
+                top_p=cfg.top_p,
+                use_cache=False,
+                recompute_strategy="none",
+            )
+            base_res = engine.generate(base_req)
+
+            kvd_true_recompute = (kvd_res.recompute_mode == "kv_diff_recompute"
+                                  and kvd_res.recomputed_tokens > 0)
+            if kvd_true_recompute:
+                kvd_true_recompute_count += 1
+
+            reuse_ttft_list.append(reuse_res.first_token_latency_s)
+            kvd_ttft_list.append(kvd_res.first_token_latency_s)
+            base_ttft_list.append(base_res.first_token_latency_s)
+            reuse_total_list.append(reuse_res.total_latency_s)
+            kvd_total_list.append(kvd_res.total_latency_s)
+            base_total_list.append(base_res.total_latency_s)
+
+            reuse_f1 = max([compute_f1(reuse_res.generated_text, a, model_runner.tokenizer)
+                            for a in answers]) if answers else None
+            kvd_f1 = max([compute_f1(kvd_res.generated_text, a, model_runner.tokenizer)
+                          for a in answers]) if answers else None
+            base_f1 = max([compute_f1(base_res.generated_text, a, model_runner.tokenizer)
+                           for a in answers]) if answers else None
+            if reuse_f1 is not None:
+                reuse_f1_list.append(reuse_f1)
+            if kvd_f1 is not None:
+                kvd_f1_list.append(kvd_f1)
+            if base_f1 is not None:
+                base_f1_list.append(base_f1)
+    finally:
+        cleanup_group_runtime(kv_cache, engine)
+
+    return {
+        "sample_count": count,
+        "full_reuse_avg_ttft_s": _mean(reuse_ttft_list),
+        "kv_diff_avg_ttft_s": _mean(kvd_ttft_list),
+        "full_prefill_avg_ttft_s": _mean(base_ttft_list),
+        "full_reuse_avg_total_s": _mean(reuse_total_list),
+        "kv_diff_avg_total_s": _mean(kvd_total_list),
+        "full_prefill_avg_total_s": _mean(base_total_list),
+        "full_reuse_avg_f1": _mean(reuse_f1_list),
+        "kv_diff_avg_f1": _mean(kvd_f1_list),
+        "full_prefill_avg_f1": _mean(base_f1_list),
+        "kvd_true_recompute_count": kvd_true_recompute_count,
+    }
+
+
 def main() -> None:
     cfg = RuntimeConfig()
     cfg.max_new_tokens = 32
@@ -117,157 +282,104 @@ def main() -> None:
     with open(dataset_path, "r", encoding="utf-8") as f:
         eval_dataset = json.load(f)
 
-    for recomp_ratio in ratio_grid():
-        # 每组 ratio 重建 KV cache，避免跨组缓存污染。
+    sample_limit = min(len(eval_dataset), max_samples_per_ratio, stop_count)
+    baseline_stats = run_fixed_baselines(
+        eval_dataset=eval_dataset,
+        cfg=cfg,
+        model_runner=model_runner,
+        logger=logger,
+        sample_limit=sample_limit,
+    )
+
+    ratios = ratio_grid()
+    total_groups = len(ratios)
+    for group_idx, recomp_ratio in enumerate(ratios, start=1):
+        print(
+            f"[curve] 进行中 {group_idx}/{total_groups}, recomp_ratio={recomp_ratio:.2f}",
+            flush=True,
+        )
+        # 每组 ratio 重建 KV cache；仅跑 query_aware。
         kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
         engine = InferenceEngine(model_runner, kv_cache, logger)
 
-        reuse_ttft_list: List[float] = []
-        kvd_ttft_list: List[float] = []
         qaw_ttft_list: List[float] = []
-        base_ttft_list: List[float] = []
-        reuse_total_list: List[float] = []
-        kvd_total_list: List[float] = []
         qaw_total_list: List[float] = []
-        base_total_list: List[float] = []
-        reuse_f1_list: List[float] = []
-        kvd_f1_list: List[float] = []
         qaw_f1_list: List[float] = []
-        base_f1_list: List[float] = []
-        kvd_true_recompute_count = 0
         qaw_true_recompute_count = 0
 
         count = 0
-        for sample_idx, ex in enumerate(eval_dataset, start=1):
-            if count >= max_samples_per_ratio or count >= stop_count:
-                break
-            count += 1
+        try:
+            for sample_idx, ex in enumerate(eval_dataset, start=1):
+                if count >= sample_limit:
+                    break
+                count += 1
 
-            answers = ex.get("answers", [])
-            doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
-            query_text = normalize_question(ex.get("question", ""))
-            final_prompt = build_final_prompt(doc_prompts, q_prompt)
-            stale_prompt = build_stale_prompt(doc_prompts, query_text)
+                answers = ex.get("answers", [])
+                doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
+                query_text = normalize_question(ex.get("question", ""))
+                final_prompt = build_final_prompt(doc_prompts, q_prompt)
+                stale_prompt = build_stale_prompt(doc_prompts, query_text)
 
-            # 1) full reuse
-            reuse_template_id = f"r{recomp_ratio}-reuse-template-{sample_idx}"
-            warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
-            reuse_session_id = f"r{recomp_ratio}-reuse-{sample_idx}"
-            seed_session_cache(kv_cache, reuse_template_id, reuse_session_id)
-            reuse_req = GenerateRequest(
-                session_id=reuse_session_id,
-                prompt=final_prompt,
-                max_new_tokens=cfg.max_new_tokens,
-                temperature=cfg.temperature,
-                top_p=cfg.top_p,
-                use_cache=True,
-                recompute_strategy="none",
+                # 每个样本只为 query_aware 准备 stale cache。
+                stale_template_id = f"r{recomp_ratio}-stale-template-{sample_idx}"
+                warm_prompt_cache(engine, kv_cache, stale_template_id, stale_prompt)
+
+                qaw_session_id = f"r{recomp_ratio}-qaw-{sample_idx}"
+                seed_session_cache(kv_cache, stale_template_id, qaw_session_id)
+                qaw_req = GenerateRequest(
+                    session_id=qaw_session_id,
+                    prompt=final_prompt,
+                    max_new_tokens=cfg.max_new_tokens,
+                    temperature=cfg.temperature,
+                    top_p=cfg.top_p,
+                    use_cache=True,
+                    recompute_strategy="query_aware",
+                    recomp_ratio=recomp_ratio,
+                    suffix_len=32,
+                    query_text=query_text,
+                )
+                qaw_res = engine.generate(qaw_req)
+
+                qaw_true_recompute = (
+                    qaw_res.recompute_mode == "query_aware_recompute"
+                    and qaw_res.recomputed_tokens > 0)
+                if qaw_true_recompute:
+                    qaw_true_recompute_count += 1
+
+                qaw_ttft_list.append(qaw_res.first_token_latency_s)
+                qaw_total_list.append(qaw_res.total_latency_s)
+
+                qaw_f1 = max([compute_f1(qaw_res.generated_text, a, model_runner.tokenizer)
+                              for a in answers]) if answers else None
+                if qaw_f1 is not None:
+                    qaw_f1_list.append(qaw_f1)
+        finally:
+            cleanup_group_runtime(kv_cache, engine)
+            mem_after_cleanup = get_cuda_mem_mb()
+            print(
+                f"[curve] 组完成 {group_idx}/{total_groups}, "
+                f"已清理显存: {format_cuda_mem(mem_after_cleanup)}",
+                flush=True,
             )
-            reuse_res = engine.generate(reuse_req)
-
-            # 为 kvd / qaw 准备同一份 stale cache。
-            stale_template_id = f"r{recomp_ratio}-stale-template-{sample_idx}"
-            warm_prompt_cache(engine, kv_cache, stale_template_id, stale_prompt)
-
-            # 2) kv_diff
-            kvd_session_id = f"r{recomp_ratio}-kvd-{sample_idx}"
-            seed_session_cache(kv_cache, stale_template_id, kvd_session_id)
-            kvd_req = GenerateRequest(
-                session_id=kvd_session_id,
-                prompt=final_prompt,
-                max_new_tokens=cfg.max_new_tokens,
-                temperature=cfg.temperature,
-                top_p=cfg.top_p,
-                use_cache=True,
-                recompute_strategy="kv_diff",
-                recomp_ratio=0.16,
-                suffix_len=32,
-                query_text=query_text,
-            )
-            kvd_res = engine.generate(kvd_req)
-
-            # 3) query_aware（ratio sweep）
-            qaw_session_id = f"r{recomp_ratio}-qaw-{sample_idx}"
-            seed_session_cache(kv_cache, stale_template_id, qaw_session_id)
-            qaw_req = GenerateRequest(
-                session_id=qaw_session_id,
-                prompt=final_prompt,
-                max_new_tokens=cfg.max_new_tokens,
-                temperature=cfg.temperature,
-                top_p=cfg.top_p,
-                use_cache=True,
-                recompute_strategy="query_aware",
-                recomp_ratio=recomp_ratio,
-                suffix_len=32,
-                query_text=query_text,
-            )
-            qaw_res = engine.generate(qaw_req)
-
-            # 4) full prefill
-            base_req = GenerateRequest(
-                session_id=f"r{recomp_ratio}-baseline-{sample_idx}",
-                prompt=final_prompt,
-                max_new_tokens=cfg.max_new_tokens,
-                temperature=cfg.temperature,
-                top_p=cfg.top_p,
-                use_cache=False,
-                recompute_strategy="none",
-            )
-            base_res = engine.generate(base_req)
-
-            kvd_true_recompute = (kvd_res.recompute_mode == "kv_diff_recompute"
-                                  and kvd_res.recomputed_tokens > 0)
-            qaw_true_recompute = (qaw_res.recompute_mode == "query_aware_recompute"
-                                  and qaw_res.recomputed_tokens > 0)
-            if kvd_true_recompute:
-                kvd_true_recompute_count += 1
-            if qaw_true_recompute:
-                qaw_true_recompute_count += 1
-
-            reuse_ttft_list.append(reuse_res.first_token_latency_s)
-            kvd_ttft_list.append(kvd_res.first_token_latency_s)
-            qaw_ttft_list.append(qaw_res.first_token_latency_s)
-            base_ttft_list.append(base_res.first_token_latency_s)
-            reuse_total_list.append(reuse_res.total_latency_s)
-            kvd_total_list.append(kvd_res.total_latency_s)
-            qaw_total_list.append(qaw_res.total_latency_s)
-            base_total_list.append(base_res.total_latency_s)
-
-            reuse_f1 = max([compute_f1(reuse_res.generated_text, a, model_runner.tokenizer)
-                            for a in answers]) if answers else None
-            kvd_f1 = max([compute_f1(kvd_res.generated_text, a, model_runner.tokenizer)
-                          for a in answers]) if answers else None
-            qaw_f1 = max([compute_f1(qaw_res.generated_text, a, model_runner.tokenizer)
-                          for a in answers]) if answers else None
-            base_f1 = max([compute_f1(base_res.generated_text, a, model_runner.tokenizer)
-                           for a in answers]) if answers else None
-            if reuse_f1 is not None:
-                reuse_f1_list.append(reuse_f1)
-            if kvd_f1 is not None:
-                kvd_f1_list.append(kvd_f1)
-            if qaw_f1 is not None:
-                qaw_f1_list.append(qaw_f1)
-            if base_f1 is not None:
-                base_f1_list.append(base_f1)
 
         # 每组 ratio 仅输出一条 run_summary，不输出 sample_result。
         output_writer.append_json({
             "event": "run_summary",
             "recomp_ratio": recomp_ratio,
             "sample_count": count,
-            "full_reuse_avg_ttft_s": _mean(reuse_ttft_list),
-            "kv_diff_avg_ttft_s": _mean(kvd_ttft_list),
+            "full_reuse_avg_ttft_s": baseline_stats["full_reuse_avg_ttft_s"],
+            "kv_diff_avg_ttft_s": baseline_stats["kv_diff_avg_ttft_s"],
             "query_aware_avg_ttft_s": _mean(qaw_ttft_list),
-            "full_prefill_avg_ttft_s": _mean(base_ttft_list),
-            "full_reuse_avg_total_s": _mean(reuse_total_list),
-            "kv_diff_avg_total_s": _mean(kvd_total_list),
+            "full_prefill_avg_ttft_s": baseline_stats["full_prefill_avg_ttft_s"],
+            "full_reuse_avg_total_s": baseline_stats["full_reuse_avg_total_s"],
+            "kv_diff_avg_total_s": baseline_stats["kv_diff_avg_total_s"],
             "query_aware_avg_total_s": _mean(qaw_total_list),
-            "full_prefill_avg_total_s": _mean(base_total_list),
-            "full_reuse_avg_f1": _mean(reuse_f1_list),
-            "kv_diff_avg_f1": _mean(kvd_f1_list),
+            "full_prefill_avg_total_s": baseline_stats["full_prefill_avg_total_s"],
+            "full_reuse_avg_f1": baseline_stats["full_reuse_avg_f1"],
+            "kv_diff_avg_f1": baseline_stats["kv_diff_avg_f1"],
             "query_aware_avg_f1": _mean(qaw_f1_list),
-            "full_prefill_avg_f1": _mean(base_f1_list),
-            "kvd_true_recompute_count": kvd_true_recompute_count,
+            "full_prefill_avg_f1": baseline_stats["full_prefill_avg_f1"],
+            "kvd_true_recompute_count": baseline_stats["kvd_true_recompute_count"],
             "qaw_true_recompute_count": qaw_true_recompute_count,
             "ended_at": utc8_now_str(),
         })
