@@ -62,6 +62,14 @@ def build_final_prompt(doc_prompts: List[str], q_prompt: str) -> str:
     return build_prefix_prompt(doc_prompts) + q_prompt
 
 
+def build_stale_prompt(doc_prompts: List[str], query_text: str) -> str:
+    """构造非前缀旧缓存 prompt，强制触发重算路径。"""
+    stale_q_prompt = (
+        f"{QUERY_PROMPT} Placeholder cache-warm question: {query_text}\nAnswer:"
+    )
+    return build_final_prompt(doc_prompts, stale_q_prompt)
+
+
 def warm_chunk_checkpoints(engine: InferenceEngine, kv_cache: KVCacheManager,
                            base_session_id: str,
                            doc_prompts: List[str]) -> List[str]:
@@ -173,6 +181,8 @@ def main() -> None:
     qaw_f1_list: List[float] = []
     base_f1_list: List[float] = []
     reuse_f1_list: List[float] = []
+    kvd_true_recompute_count = 0
+    qaw_true_recompute_count = 0
 
     count = 0
     for sample_idx, ex in enumerate(eval_dataset, start=1):
@@ -181,16 +191,7 @@ def main() -> None:
         doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
         query_text = normalize_question(ex.get("question", ""))
         final_prompt = build_final_prompt(doc_prompts, q_prompt)
-
-        checkpoint_base = f"musique-ckpt-{sample_idx}"
-        checkpoint_ids = warm_chunk_checkpoints(engine, kv_cache, checkpoint_base,
-                                                doc_prompts)
-        best_ckpt_id, best_ckpt_len = select_best_checkpoint(
-            kv_cache=kv_cache,
-            model_runner=model_runner,
-            checkpoint_ids=checkpoint_ids,
-            target_prompt=final_prompt,
-        )
+        stale_prompt = build_stale_prompt(doc_prompts, query_text)
 
         # 方法 1：full reuse（完整 KV 复用，与 full prefill 相对）。
         reuse_template_id = f"musique-reuse-template-{sample_idx}"
@@ -208,10 +209,13 @@ def main() -> None:
         )
         reuse_res = engine.generate(reuse_req)
 
+        stale_template_id = f"musique-stale-template-{sample_idx}"
+        stale_warm_res = warm_prompt_cache(engine, kv_cache, stale_template_id,
+                                           stale_prompt)
+
         # 方法 2：高 KV 偏差重算。
         kvd_session_id = f"musique-kvd-{sample_idx}"
-        if best_ckpt_id is not None:
-            seed_session_from_checkpoint(kv_cache, best_ckpt_id, kvd_session_id)
+        seed_session_from_checkpoint(kv_cache, stale_template_id, kvd_session_id)
         kvd_req = GenerateRequest(
             session_id=kvd_session_id,
             prompt=final_prompt,
@@ -228,8 +232,7 @@ def main() -> None:
 
         # 方法 3：Query-aware 重算。
         qaw_session_id = f"musique-qaw-{sample_idx}"
-        if best_ckpt_id is not None:
-            seed_session_from_checkpoint(kv_cache, best_ckpt_id, qaw_session_id)
+        seed_session_from_checkpoint(kv_cache, stale_template_id, qaw_session_id)
         qaw_req = GenerateRequest(
             session_id=qaw_session_id,
             prompt=final_prompt,
@@ -238,7 +241,7 @@ def main() -> None:
             top_p=cfg.top_p,
             use_cache=True,
             recompute_strategy="query_aware",
-            recomp_ratio=0.70,
+            recomp_ratio=0.30,
             suffix_len=32,
             query_text=query_text,
         )
@@ -255,6 +258,14 @@ def main() -> None:
             recompute_strategy="none",
         )
         base_res = engine.generate(base_req)
+        kvd_true_recompute = (kvd_res.recompute_mode == "kv_diff_recompute"
+                              and kvd_res.recomputed_tokens > 0)
+        qaw_true_recompute = (qaw_res.recompute_mode == "query_aware_recompute"
+                              and qaw_res.recomputed_tokens > 0)
+        if kvd_true_recompute:
+            kvd_true_recompute_count += 1
+        if qaw_true_recompute:
+            qaw_true_recompute_count += 1
 
         reuse_ttft_list.append(reuse_res.first_token_latency_s)
         kvd_ttft_list.append(kvd_res.first_token_latency_s)
@@ -288,8 +299,7 @@ def main() -> None:
             "chunk_num": len(doc_prompts),
             "question": ex.get("question", ""),
             "answers": answers,
-            "selected_checkpoint": best_ckpt_id,
-            "selected_prefix_tokens": best_ckpt_len,
+            "stale_cache_prompt_tokens": stale_warm_res.prompt_tokens,
             "full_reuse": {
                 "generated_text": reuse_res.generated_text,
                 "ttft_s": reuse_res.first_token_latency_s,
@@ -304,6 +314,8 @@ def main() -> None:
                 "total_s": kvd_res.total_latency_s,
                 "reused_prefix_tokens": kvd_res.reused_prefix_tokens,
                 "recomputed_tokens": kvd_res.recomputed_tokens,
+                "recompute_mode": kvd_res.recompute_mode,
+                "true_recompute": kvd_true_recompute,
                 "f1": kvd_f1,
             },
             "query_aware": {
@@ -312,6 +324,8 @@ def main() -> None:
                 "total_s": qaw_res.total_latency_s,
                 "reused_prefix_tokens": qaw_res.reused_prefix_tokens,
                 "recomputed_tokens": qaw_res.recomputed_tokens,
+                "recompute_mode": qaw_res.recompute_mode,
+                "true_recompute": qaw_true_recompute,
                 "f1": qaw_f1,
             },
             "full_prefill": {
@@ -340,6 +354,8 @@ def main() -> None:
         "kv_diff_avg_f1": _mean(kvd_f1_list),
         "query_aware_avg_f1": _mean(qaw_f1_list),
         "full_prefill_avg_f1": _mean(base_f1_list),
+        "kvd_true_recompute_count": kvd_true_recompute_count,
+        "qaw_true_recompute_count": qaw_true_recompute_count,
         "ended_at": utc8_now_str(),
     })
 
