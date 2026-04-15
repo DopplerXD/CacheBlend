@@ -1,0 +1,20 @@
+{"event": "run_start", "script": "example/blend_runner.py", "dataset": "inputs/wikimqa_s.json", "dataset_name": "wikimqa", "started_at": "2026-04-15 21:40:26", "model": "/root/models/Yi-6B", "max_new_tokens": 32, "temperature": 0.0, "top_p": 1.0, "qaw_ratio": 0.5, "suffix_len": 32, "qaw_random_seed": 2026}
+
+Traceback (most recent call last):
+  File "/root/github/CacheBlend/example/blend_runner.py", line 411, in <module>
+    main()
+  File "/root/github/CacheBlend/example/blend_runner.py", line 282, in main
+    base_res = engine.generate(base_req)
+  File "/root/github/CacheBlend/engine/inference_engine.py", line 471, in generate
+    logits, past_key_values = self.model_runner.forward_tokens(
+  File "/root/yi-query-aware/venv/lib/python3.10/site-packages/torch/utils/_contextlib.py", line 116, in decorate_context
+    return func(*args, **kwargs)
+  File "/root/github/CacheBlend/model/yi_model.py", line 129, in forward_tokens
+    outputs = self.model(
+  File "/root/yi-query-aware/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1553, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/root/yi-query-aware/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1562, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/root/yi-query-aware/venv/lib/python3.10/site-packages/transformers/models/llama/modeling_llama.py", line 1214, in forward
+    logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :]).float()
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 1.54 GiB. GPU 0 has a total capacity of 23.56 GiB of which 1.44 GiB is free. Including non-PyTorch memory, this process has 22.11 GiB memory in use. Of the allocated memory 18.97 GiB is allocated by PyTorch, and 2.83 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
