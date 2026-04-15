@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import hashlib
 from typing import Any, List, Tuple
 
 import torch
@@ -97,7 +98,9 @@ class InferenceEngine:
                                           scores: torch.Tensor,
                                           recomp_ratio: float,
                                           suffix_len: int,
-                                          force_changed: bool) -> torch.Tensor:
+                                          force_changed: bool,
+                                          random_topk: bool = False,
+                                          random_seed: int = 0) -> torch.Tensor:
         """通用 token 选择器：Top-K(score) + 尾部强制 + 新增 token（可选强制 changed）。"""
         new_len = len(new_tokens)
         overlap_len = min(len(old_tokens), new_len, int(scores.shape[0]))
@@ -113,7 +116,14 @@ class InferenceEngine:
         if candidate_end > 0 and recomp_ratio > 0:
             topk_num = max(1, int(candidate_end * recomp_ratio))
             topk_num = min(topk_num, candidate_end)
-            top_indices = torch.topk(scores[:candidate_end], k=topk_num).indices
+            if random_topk:
+                generator = torch.Generator(device=scores.device)
+                generator.manual_seed(int(random_seed))
+                top_indices = torch.randperm(
+                    candidate_end, device=scores.device,
+                    generator=generator)[:topk_num]
+            else:
+                top_indices = torch.topk(scores[:candidate_end], k=topk_num).indices
             topk = set(int(i) for i in top_indices.tolist())
 
         if force_changed:
@@ -124,6 +134,14 @@ class InferenceEngine:
             # 理论上至少会有 forced 或 added；这里兜底避免空索引。
             selected = [new_len - 1] if new_len > 0 else []
         return torch.tensor(selected, dtype=torch.long, device=scores.device)
+
+    @staticmethod
+    def _derive_stable_seed(session_id: str, fallback_seed: int) -> int:
+        """派生稳定随机种子：优先使用显式 seed，否则由 session_id 生成。"""
+        if fallback_seed > 0:
+            return int(fallback_seed)
+        digest = hashlib.sha256(session_id.encode("utf-8")).digest()
+        return int.from_bytes(digest[:4], byteorder="big", signed=False)
 
     def _build_blended_past_key_values(self, old_past_key_values: Any,
                                        new_past_key_values: Any, new_len: int,
@@ -294,13 +312,19 @@ class InferenceEngine:
             query_token_ids=query_token_ids,
             overlap_len=overlap_len,
         )
+        qaw_variant = (req.qaw_variant or "default").lower()
+        random_topk = (qaw_variant == "random_topk")
+        suffix_len = 0 if qaw_variant == "no_suffix" else req.suffix_len
+        random_seed = self._derive_stable_seed(req.session_id, req.qaw_random_seed)
         selected_indices = self._select_token_indices_from_scores(
             old_tokens=old_tokens,
             new_tokens=prompt_token_ids,
             scores=scores,
             recomp_ratio=req.recomp_ratio,
-            suffix_len=req.suffix_len,
+            suffix_len=suffix_len,
             force_changed=False,
+            random_topk=random_topk,
+            random_seed=random_seed,
         )
         selected_list = [int(i) for i in selected_indices.tolist()]
         selected_token_ids = [prompt_token_ids[i] for i in selected_list]
@@ -335,7 +359,8 @@ class InferenceEngine:
             )
 
         self.logger.info(
-            "query-aware 打包重算: overlap=%d selected=%d packed_len=%d",
+            "query-aware 打包重算: variant=%s overlap=%d selected=%d packed_len=%d",
+            qaw_variant,
             overlap_len,
             int(selected_indices.numel()),
             len(selected_token_ids),

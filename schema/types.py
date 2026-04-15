@@ -24,6 +24,10 @@ class GenerateRequest:
     suffix_len: int = 16
     # query-aware 策略下可显式提供 query 文本。
     query_text: str = ""
+    # query-aware 子变体：default / no_suffix / random_topk
+    qaw_variant: str = "default"
+    # random_topk 变体随机种子（<=0 时按 session_id 派生）。
+    qaw_random_seed: int = 0
 
 
 @dataclass
