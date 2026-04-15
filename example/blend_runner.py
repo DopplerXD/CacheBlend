@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import importlib.util
 import json
 import os
 import sys
 from typing import Callable, Dict, List, Optional
+
+import torch
 
 # 允许从项目根目录导入模块（保持 `python example/blend_runner.py` 可直接运行）。
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -52,6 +55,14 @@ def _safe_max_f1(pred_text: str, answers: List[str], tokenizer) -> Optional[floa
         return max([compute_f1(pred_text, a, tokenizer) for a in answers])
     except Exception:
         return 0.0
+
+
+def _cleanup_after_sample(kv_cache: KVCacheManager) -> None:
+    """清理样本级缓存，避免跨样本显存累计导致 OOM。"""
+    kv_cache._store.clear()  # pylint: disable=protected-access
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 
 def _normalize_wikimqa_answers(raw_answers) -> List[str]:
@@ -173,6 +184,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--count", type=int, default=30, help="最多评测样本数")
     parser.add_argument("--max-new-tokens", type=int, default=32)
     parser.add_argument("--qaw-ratio", type=float, default=0.30)
+    parser.add_argument("--max-prompt-tokens",
+                        type=int,
+                        default=0,
+                        help=">0 时跳过超过该长度的样本，0 表示不限制")
     parser.add_argument("--suffix-len", type=int, default=32)
     parser.add_argument("--qaw-random-seed", type=int, default=2026)
     parser.add_argument("--summary-only",
@@ -209,6 +224,7 @@ def main() -> None:
         "temperature": cfg.temperature,
         "top_p": cfg.top_p,
         "qaw_ratio": args.qaw_ratio,
+        "max_prompt_tokens": args.max_prompt_tokens,
         "suffix_len": args.suffix_len,
         "qaw_random_seed": args.qaw_random_seed,
     })
@@ -257,11 +273,11 @@ def main() -> None:
     ]
 
     count = 0
+    skipped_oom_count = 0
+    skipped_long_prompt_count = 0
     for sample_idx, ex in enumerate(eval_dataset, start=1):
         if count >= args.count:
             break
-        count += 1
-
         answers = answer_fn(ex.get("answers", []))
         doc_prompts, q_prompt = build_qa_prompt(ex, spec["query_prompt"])
         query_text = normalize_question(ex.get("question", ""))
@@ -269,117 +285,152 @@ def main() -> None:
         stale_prompt = build_stale_prompt(spec["prefix_prompt"], spec["query_prompt"],
                                           doc_prompts, query_text)
 
-        # 1) full prefill
-        base_req = GenerateRequest(
-            session_id=f"{args.dataset}-baseline-{sample_idx}",
-            prompt=final_prompt,
-            max_new_tokens=cfg.max_new_tokens,
-            temperature=cfg.temperature,
-            top_p=cfg.top_p,
-            use_cache=False,
-            recompute_strategy="none",
-        )
-        base_res = engine.generate(base_req)
+        # 样本级 prompt 长度过滤（避免极长样本直接触发 OOM）。
+        if args.max_prompt_tokens > 0:
+            prompt_len = len(model_runner.encode(final_prompt))
+            if prompt_len > args.max_prompt_tokens:
+                skipped_long_prompt_count += 1
+                output_writer.append_json({
+                    "event": "sample_skipped",
+                    "reason": "prompt_too_long",
+                    "sample_idx": sample_idx,
+                    "prompt_tokens": prompt_len,
+                    "max_prompt_tokens": args.max_prompt_tokens,
+                })
+                _cleanup_after_sample(kv_cache)
+                continue
 
-        # 2) full reuse
-        reuse_template_id = f"{args.dataset}-reuse-template-{sample_idx}"
-        warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
-        reuse_session_id = f"{args.dataset}-reuse-{sample_idx}"
-        seed_session_cache(kv_cache, reuse_template_id, reuse_session_id)
-        reuse_req = GenerateRequest(
-            session_id=reuse_session_id,
-            prompt=final_prompt,
-            max_new_tokens=cfg.max_new_tokens,
-            temperature=cfg.temperature,
-            top_p=cfg.top_p,
-            use_cache=True,
-            recompute_strategy="none",
-        )
-        reuse_res = engine.generate(reuse_req)
+        stage = "full_prefill"
+        try:
+            # 1) full prefill
+            base_req = GenerateRequest(
+                session_id=f"{args.dataset}-baseline-{sample_idx}",
+                prompt=final_prompt,
+                max_new_tokens=cfg.max_new_tokens,
+                temperature=cfg.temperature,
+                top_p=cfg.top_p,
+                use_cache=False,
+                recompute_strategy="none",
+            )
+            base_res = engine.generate(base_req)
 
-        # 3) stale cache template for qaw variants
-        stale_template_id = f"{args.dataset}-stale-template-{sample_idx}"
-        stale_warm_res = warm_prompt_cache(engine, kv_cache, stale_template_id, stale_prompt)
-
-        # 4) qaw variants
-        qaw_results: Dict[str, object] = {}
-        for metric_key, qaw_variant, suffix_len, random_seed in qaw_variant_cfgs:
-            sid = f"{args.dataset}-{metric_key}-{sample_idx}"
-            seed_session_cache(kv_cache, stale_template_id, sid)
-            req = GenerateRequest(
-                session_id=sid,
+            # 2) full reuse
+            stage = "full_reuse"
+            reuse_template_id = f"{args.dataset}-reuse-template-{sample_idx}"
+            warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
+            reuse_session_id = f"{args.dataset}-reuse-{sample_idx}"
+            seed_session_cache(kv_cache, reuse_template_id, reuse_session_id)
+            reuse_req = GenerateRequest(
+                session_id=reuse_session_id,
                 prompt=final_prompt,
                 max_new_tokens=cfg.max_new_tokens,
                 temperature=cfg.temperature,
                 top_p=cfg.top_p,
                 use_cache=True,
-                recompute_strategy="query_aware",
-                recomp_ratio=args.qaw_ratio,
-                suffix_len=suffix_len,
-                query_text=query_text,
-                qaw_variant=qaw_variant,
-                qaw_random_seed=random_seed,
+                recompute_strategy="none",
             )
-            qaw_results[metric_key] = engine.generate(req)
+            reuse_res = engine.generate(reuse_req)
 
-        base_f1 = _safe_max_f1(base_res.generated_text, answers, model_runner.tokenizer)
-        reuse_f1 = _safe_max_f1(reuse_res.generated_text, answers, model_runner.tokenizer)
+            # 3) stale cache template for qaw variants
+            stage = "stale_cache_warm"
+            stale_template_id = f"{args.dataset}-stale-template-{sample_idx}"
+            stale_warm_res = warm_prompt_cache(engine, kv_cache, stale_template_id,
+                                               stale_prompt)
 
-        metrics["full_prefill"]["ttft"].append(base_res.first_token_latency_s)
-        metrics["full_prefill"]["total"].append(base_res.total_latency_s)
-        if base_f1 is not None:
-            metrics["full_prefill"]["f1"].append(base_f1)
+            # 4) qaw variants
+            stage = "qaw_variants"
+            qaw_results: Dict[str, object] = {}
+            for metric_key, qaw_variant, suffix_len, random_seed in qaw_variant_cfgs:
+                sid = f"{args.dataset}-{metric_key}-{sample_idx}"
+                seed_session_cache(kv_cache, stale_template_id, sid)
+                req = GenerateRequest(
+                    session_id=sid,
+                    prompt=final_prompt,
+                    max_new_tokens=cfg.max_new_tokens,
+                    temperature=cfg.temperature,
+                    top_p=cfg.top_p,
+                    use_cache=True,
+                    recompute_strategy="query_aware",
+                    recomp_ratio=args.qaw_ratio,
+                    suffix_len=suffix_len,
+                    query_text=query_text,
+                    qaw_variant=qaw_variant,
+                    qaw_random_seed=random_seed,
+                )
+                qaw_results[metric_key] = engine.generate(req)
 
-        metrics["full_reuse"]["ttft"].append(reuse_res.first_token_latency_s)
-        metrics["full_reuse"]["total"].append(reuse_res.total_latency_s)
-        if reuse_f1 is not None:
-            metrics["full_reuse"]["f1"].append(reuse_f1)
+            base_f1 = _safe_max_f1(base_res.generated_text, answers,
+                                   model_runner.tokenizer)
+            reuse_f1 = _safe_max_f1(reuse_res.generated_text, answers,
+                                    model_runner.tokenizer)
 
-        sample_qaw_payload = {}
-        for metric_key, _, _, _ in qaw_variant_cfgs:
-            qaw_res = qaw_results[metric_key]
-            qaw_true_recompute = (qaw_res.recompute_mode == "query_aware_recompute"
-                                  and qaw_res.recomputed_tokens > 0)
-            if qaw_true_recompute:
-                metrics[metric_key]["true_recompute"] += 1
+            metrics["full_prefill"]["ttft"].append(base_res.first_token_latency_s)
+            metrics["full_prefill"]["total"].append(base_res.total_latency_s)
+            if base_f1 is not None:
+                metrics["full_prefill"]["f1"].append(base_f1)
 
-            qaw_f1 = _safe_max_f1(qaw_res.generated_text, answers, model_runner.tokenizer)
-            metrics[metric_key]["ttft"].append(qaw_res.first_token_latency_s)
-            metrics[metric_key]["total"].append(qaw_res.total_latency_s)
-            if qaw_f1 is not None:
-                metrics[metric_key]["f1"].append(qaw_f1)
-            sample_qaw_payload[metric_key] = {
-                "generated_text": qaw_res.generated_text,
-                "ttft_s": qaw_res.first_token_latency_s,
-                "total_s": qaw_res.total_latency_s,
-                "recomputed_tokens": qaw_res.recomputed_tokens,
-                "recompute_mode": qaw_res.recompute_mode,
-                "true_recompute": qaw_true_recompute,
-                "f1": qaw_f1,
-            }
+            metrics["full_reuse"]["ttft"].append(reuse_res.first_token_latency_s)
+            metrics["full_reuse"]["total"].append(reuse_res.total_latency_s)
+            if reuse_f1 is not None:
+                metrics["full_reuse"]["f1"].append(reuse_f1)
 
-        if not args.summary_only:
+            sample_qaw_payload = {}
+            for metric_key, _, _, _ in qaw_variant_cfgs:
+                qaw_res = qaw_results[metric_key]
+                qaw_true_recompute = (qaw_res.recompute_mode == "query_aware_recompute"
+                                      and qaw_res.recomputed_tokens > 0)
+                if qaw_true_recompute:
+                    metrics[metric_key]["true_recompute"] += 1
+
+                qaw_f1 = _safe_max_f1(qaw_res.generated_text, answers,
+                                      model_runner.tokenizer)
+                metrics[metric_key]["ttft"].append(qaw_res.first_token_latency_s)
+                metrics[metric_key]["total"].append(qaw_res.total_latency_s)
+                if qaw_f1 is not None:
+                    metrics[metric_key]["f1"].append(qaw_f1)
+                sample_qaw_payload[metric_key] = {
+                    "generated_text": qaw_res.generated_text,
+                    "ttft_s": qaw_res.first_token_latency_s,
+                    "total_s": qaw_res.total_latency_s,
+                    "recomputed_tokens": qaw_res.recomputed_tokens,
+                    "recompute_mode": qaw_res.recompute_mode,
+                    "true_recompute": qaw_true_recompute,
+                    "f1": qaw_f1,
+                }
+
+            if not args.summary_only:
+                output_writer.append_json({
+                    "event": "sample_result",
+                    "sample_idx": sample_idx,
+                    "question": ex.get("question", ""),
+                    "answers": answers,
+                    "stale_cache_prompt_tokens": stale_warm_res.prompt_tokens,
+                    "full_prefill": {
+                        "generated_text": base_res.generated_text,
+                        "ttft_s": base_res.first_token_latency_s,
+                        "total_s": base_res.total_latency_s,
+                        "f1": base_f1,
+                    },
+                    "full_reuse": {
+                        "generated_text": reuse_res.generated_text,
+                        "ttft_s": reuse_res.first_token_latency_s,
+                        "total_s": reuse_res.total_latency_s,
+                        "reused_prefix_tokens": reuse_res.reused_prefix_tokens,
+                        "f1": reuse_f1,
+                    },
+                    "qaw_variants": sample_qaw_payload,
+                })
+            count += 1
+        except torch.OutOfMemoryError:
+            skipped_oom_count += 1
             output_writer.append_json({
-                "event": "sample_result",
+                "event": "sample_skipped",
+                "reason": "cuda_oom",
                 "sample_idx": sample_idx,
-                "question": ex.get("question", ""),
-                "answers": answers,
-                "stale_cache_prompt_tokens": stale_warm_res.prompt_tokens,
-                "full_prefill": {
-                    "generated_text": base_res.generated_text,
-                    "ttft_s": base_res.first_token_latency_s,
-                    "total_s": base_res.total_latency_s,
-                    "f1": base_f1,
-                },
-                "full_reuse": {
-                    "generated_text": reuse_res.generated_text,
-                    "ttft_s": reuse_res.first_token_latency_s,
-                    "total_s": reuse_res.total_latency_s,
-                    "reused_prefix_tokens": reuse_res.reused_prefix_tokens,
-                    "f1": reuse_f1,
-                },
-                "qaw_variants": sample_qaw_payload,
+                "stage": stage,
             })
+        finally:
+            _cleanup_after_sample(kv_cache)
 
     output_writer.append_json({
         "event": "run_summary",
@@ -403,6 +454,8 @@ def main() -> None:
         "qaw_no_suffix_true_recompute_count": metrics["qaw_no_suffix"]["true_recompute"],
         "qaw_random_topk_true_recompute_count":
         metrics["qaw_random_topk"]["true_recompute"],
+        "skipped_oom_count": skipped_oom_count,
+        "skipped_long_prompt_count": skipped_long_prompt_count,
         "ended_at": utc8_now_str(),
     })
 
