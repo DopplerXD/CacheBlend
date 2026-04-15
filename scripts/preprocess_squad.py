@@ -84,7 +84,7 @@ def main() -> None:
     parser.add_argument(
         "--download-cache-path",
         type=str,
-        default="inputs/_cache/squad_train_v11.json",
+        default="inputs/_cache/squad_train_v11_dev.json",
         help="自动下载文件的本地缓存路径",
     )
     parser.add_argument(
