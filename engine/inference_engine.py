@@ -510,7 +510,11 @@ class InferenceEngine:
         # 将“本次完整上下文 + 新生成”写回会话 KV。
         if req.use_cache:
             final_token_ids = prompt_token_ids + generated_ids
-            next_token_logits = logits if len(generated_ids) == 0 else None
+            # 仅缓存“下一 token 分布”对应的最后一步 logits，避免保存整段 [T, vocab]。
+            # 这对 warm/prefill（max_new_tokens=0）场景尤其重要，可显著降低显存占用。
+            next_token_logits = None
+            if len(generated_ids) == 0:
+                next_token_logits = logits[:, -1:, :].detach().clone()
             self.kv_cache.put(
                 req.session_id,
                 final_token_ids,
