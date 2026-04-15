@@ -420,14 +420,28 @@ class InferenceEngine:
                     self.logger.info(
                         "session_id=%s 前缀不匹配，启用 KV 偏差重算策略（ratio=%.3f, suffix_len=%d）",
                         req.session_id, req.recomp_ratio, req.suffix_len)
-                    logits, past_key_values, recomputed_tokens = self._prefill_with_kv_diff_recompute(
-                        req=req,
-                        old_tokens=cached_entry.token_ids,
-                        old_past_key_values=cached_entry.past_key_values,
-                        prompt_token_ids=prompt_token_ids,
-                    )
-                    prefill_token_ids = []
-                    recompute_mode = "kv_diff_recompute"
+                    try:
+                        logits, past_key_values, recomputed_tokens = self._prefill_with_kv_diff_recompute(
+                            req=req,
+                            old_tokens=cached_entry.token_ids,
+                            old_past_key_values=cached_entry.past_key_values,
+                            prompt_token_ids=prompt_token_ids,
+                        )
+                        prefill_token_ids = []
+                        recompute_mode = "kv_diff_recompute"
+                    except torch.OutOfMemoryError:
+                        # kv_diff 需要额外 full pass 获取 new KV，长序列下可能峰值过高。
+                        # 兜底回退到 full prefill，保证请求不中断。
+                        self.logger.warning(
+                            "session_id=%s KV 偏差重算触发 OOM，回退 full prefill",
+                            req.session_id)
+                        recompute_mode = "kv_diff_oom_fallback_full_prefill"
+                        recomputed_tokens = 0
+                        past_key_values = None
+                        prefill_token_ids = prompt_token_ids
+                        self.kv_cache.clear(req.session_id)
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
                 elif recompute_strategy == "query_aware":
                     self.logger.info(
                         "session_id=%s 前缀不匹配，启用 Query-aware 重算策略（ratio=%.3f, suffix_len=%d）",
