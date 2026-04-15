@@ -190,6 +190,9 @@ def parse_args() -> argparse.Namespace:
                         help=">0 时跳过超过该长度的样本，0 表示不限制")
     parser.add_argument("--suffix-len", type=int, default=32)
     parser.add_argument("--qaw-random-seed", type=int, default=2026)
+    parser.add_argument("--enable-qaw-ablations",
+                        action="store_true",
+                        help="启用 qaw_no_suffix / qaw_random_topk（默认仅跑 qaw_default）")
     parser.add_argument("--summary-only",
                         action="store_true",
                         help="只写 run_summary，不写 sample_result")
@@ -227,6 +230,7 @@ def main() -> None:
         "max_prompt_tokens": args.max_prompt_tokens,
         "suffix_len": args.suffix_len,
         "qaw_random_seed": args.qaw_random_seed,
+        "enable_qaw_ablations": args.enable_qaw_ablations,
     })
 
     dataset_path = os.path.join(ROOT_DIR, spec["dataset_path"])
@@ -266,11 +270,13 @@ def main() -> None:
         },
     }
 
-    qaw_variant_cfgs = [
-        ("qaw_default", "default", args.suffix_len, 0),
-        ("qaw_no_suffix", "no_suffix", 0, 0),
-        ("qaw_random_topk", "random_topk", args.suffix_len, args.qaw_random_seed),
-    ]
+    qaw_variant_cfgs = [("qaw_default", "default", args.suffix_len, 0)]
+    if args.enable_qaw_ablations:
+        qaw_variant_cfgs.extend([
+            ("qaw_no_suffix", "no_suffix", 0, 0),
+            ("qaw_random_topk", "random_topk", args.suffix_len,
+             args.qaw_random_seed),
+        ])
 
     count = 0
     skipped_oom_count = 0

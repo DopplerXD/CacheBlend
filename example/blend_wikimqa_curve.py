@@ -1,4 +1,4 @@
-"""MusiQue 速度-质量曲线脚本：仅输出每个 qaw_ratio 的 run_summary。"""
+"""WikiMQA 速度-质量曲线脚本：仅输出每个 qaw_ratio 的 run_summary。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 
 import torch
 
-# 允许从项目根目录导入模块（保持 `python example/blend_musique_curve.py` 可直接运行）。
+# 允许从项目根目录导入模块（保持 `python example/blend_wikimqa_curve.py` 可直接运行）。
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
@@ -42,13 +42,14 @@ normalize_question = _EXAMPLE_UTILS_MODULE.normalize_question
 
 
 PREFIX_PROMPT = (
-    "You will be asked a question after reading several passages. "
-    "Please directly answer the question based on the given passages. "
-    "Do NOT repeat the question. The answer should be within 5 words.\nPassages:\n"
+    "Answer the question based on the given passages. "
+    "Only give me the answer and do not output any other words.\n\n"
+    "The following are given passages.\n"
 )
 QUERY_PROMPT = (
-    "\n\nAnswer the question directly based on the given passages. "
-    "Do NOT repeat the question. The answer should be within 5 words. \nQuestion:"
+    "\n\nAnswer the question based on the given passages. "
+    "Answer the question within 5 words. Do NOT repeat the question or output any other words. "
+    "Question: "
 )
 
 
@@ -67,8 +68,21 @@ def _safe_max_f1(pred_text: str, answers: List[str], tokenizer) -> Optional[floa
         return 0.0
 
 
+def _normalize_wikimqa_answers(raw_answers) -> List[str]:
+    normalized = []
+    for item in raw_answers or []:
+        if isinstance(item, str):
+            normalized.append(item)
+        elif isinstance(item, list):
+            if item and isinstance(item[0], str):
+                normalized.append(item[0])
+        elif item is not None:
+            normalized.append(str(item))
+    return normalized
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="MusiQue curve（禁用 KVD）")
+    parser = argparse.ArgumentParser(description="WikiMQA curve（禁用 KVD）")
     parser.add_argument("--count", type=int, default=30, help="最多评测样本数")
     parser.add_argument("--qaw-ratio-min", type=float, default=0.5)
     parser.add_argument("--qaw-ratio-max", type=float, default=0.5)
@@ -199,7 +213,7 @@ def run_fixed_baselines(
                 break
             count += 1
 
-            answers = list(ex.get("answers", []))
+            answers = _normalize_wikimqa_answers(ex.get("answers", []))
             doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
             final_prompt = build_final_prompt(doc_prompts, q_prompt)
 
@@ -268,20 +282,20 @@ def main() -> None:
     cfg = RuntimeConfig()
     cfg.max_new_tokens = args.max_new_tokens
 
-    logger = setup_logger("blend_musique_curve", cfg.log_level)
+    logger = setup_logger("blend_wikimqa_curve", cfg.log_level)
     logger.disabled = True
 
     model_runner = YiModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
                                  logger)
     output_writer = ExperimentOutputWriter.create(
-        os.path.join(ROOT_DIR, "outputs"), run_tag="musique_curve")
+        os.path.join(ROOT_DIR, "outputs"), run_tag="wikimqa_curve")
 
     ratios = ratio_grid(args.qaw_ratio_min, args.qaw_ratio_max,
                         args.qaw_ratio_step)
     output_writer.append_json({
         "event": "run_start",
-        "script": "example/blend_musique_curve.py",
-        "dataset": "inputs/musique_s.json",
+        "script": "example/blend_wikimqa_curve.py",
+        "dataset": "inputs/wikimqa_s.json",
         "started_at": utc8_now_str(),
         "model": cfg.model_name,
         "max_new_tokens": cfg.max_new_tokens,
@@ -296,7 +310,7 @@ def main() -> None:
         "kvd_enabled": False,
     })
 
-    dataset_path = os.path.join(ROOT_DIR, "inputs", "musique_s.json")
+    dataset_path = os.path.join(ROOT_DIR, "inputs", "wikimqa_s.json")
     with open(dataset_path, "r", encoding="utf-8") as f:
         eval_dataset = json.load(f)
 
@@ -328,7 +342,7 @@ def main() -> None:
         processed_samples += 1
         print(f"[curve] 样本 {processed_samples}/{sample_limit} 开始", flush=True)
 
-        answers = list(ex.get("answers", []))
+        answers = _normalize_wikimqa_answers(ex.get("answers", []))
         doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
         query_text = normalize_question(ex.get("question", ""))
         final_prompt = build_final_prompt(doc_prompts, q_prompt)

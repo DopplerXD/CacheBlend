@@ -397,6 +397,7 @@ class InferenceEngine:
         recompute_mode = "full_prefill"
         recomputed_tokens = 0
 
+        logits: Any = None
         past_key_values: Any = None
         prefill_token_ids: List[int] = prompt_token_ids
         cached_entry = None
@@ -470,7 +471,7 @@ class InferenceEngine:
         if len(prefill_token_ids) > 0:
             logits, past_key_values = self.model_runner.forward_tokens(
                 prefill_token_ids, past_key_values=past_key_values)
-        else:
+        elif logits is None:
             # 命中“完整前缀复用”且缓存中携带 next-token logits 时，直接进入 decode（0 prompt 计算）。
             if (cached_entry is not None
                     and reused_prefix_tokens == len(prompt_token_ids)
