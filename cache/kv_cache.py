@@ -14,6 +14,7 @@ class SessionKV:
 
     token_ids: List[int]
     past_key_values: Any
+    next_token_logits: Any
     last_access_ts: float
 
 
@@ -61,9 +62,14 @@ class KVCacheManager:
         self._touch(session_id, entry)
         return entry
 
-    def put(self, session_id: str, token_ids: List[int], past_key_values: Any) -> None:
+    def put(self,
+            session_id: str,
+            token_ids: List[int],
+            past_key_values: Any,
+            next_token_logits: Any = None) -> None:
         entry = SessionKV(token_ids=token_ids,
                           past_key_values=past_key_values,
+                          next_token_logits=next_token_logits,
                           last_access_ts=time.time())
         self._store[session_id] = entry
         self._store.move_to_end(session_id)

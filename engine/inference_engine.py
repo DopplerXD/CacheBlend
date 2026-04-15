@@ -374,14 +374,15 @@ class InferenceEngine:
 
         past_key_values: Any = None
         prefill_token_ids: List[int] = prompt_token_ids
+        cached_entry = None
 
         if req.use_cache:
-            cached = self.kv_cache.get(req.session_id)
-            if cached is not None and self._is_prefix(cached.token_ids,
-                                                      prompt_token_ids):
-                reused_prefix_tokens = len(cached.token_ids)
+            cached_entry = self.kv_cache.get(req.session_id)
+            if cached_entry is not None and self._is_prefix(cached_entry.token_ids,
+                                                            prompt_token_ids):
+                reused_prefix_tokens = len(cached_entry.token_ids)
                 prefill_token_ids = prompt_token_ids[reused_prefix_tokens:]
-                past_key_values = cached.past_key_values
+                past_key_values = cached_entry.past_key_values
                 self.logger.info(
                     "命中 KV 缓存 session_id=%s, 复用前缀 token=%d, 增量 prefill token=%d",
                     req.session_id,
@@ -389,15 +390,15 @@ class InferenceEngine:
                     len(prefill_token_ids),
                 )
                 recompute_mode = "cache_prefix_reuse"
-            elif cached is not None:
+            elif cached_entry is not None:
                 if recompute_strategy == "kv_diff":
                     self.logger.info(
                         "session_id=%s 前缀不匹配，启用 KV 偏差重算策略（ratio=%.3f, suffix_len=%d）",
                         req.session_id, req.recomp_ratio, req.suffix_len)
                     logits, past_key_values, recomputed_tokens = self._prefill_with_kv_diff_recompute(
                         req=req,
-                        old_tokens=cached.token_ids,
-                        old_past_key_values=cached.past_key_values,
+                        old_tokens=cached_entry.token_ids,
+                        old_past_key_values=cached_entry.past_key_values,
                         prompt_token_ids=prompt_token_ids,
                     )
                     prefill_token_ids = []
@@ -408,8 +409,8 @@ class InferenceEngine:
                         req.session_id, req.recomp_ratio, req.suffix_len)
                     logits, past_key_values, recomputed_tokens = self._prefill_with_query_aware_recompute(
                         req=req,
-                        old_tokens=cached.token_ids,
-                        old_past_key_values=cached.past_key_values,
+                        old_tokens=cached_entry.token_ids,
+                        old_past_key_values=cached_entry.past_key_values,
                         prompt_token_ids=prompt_token_ids,
                     )
                     prefill_token_ids = []
@@ -431,15 +432,23 @@ class InferenceEngine:
             logits, past_key_values = self.model_runner.forward_tokens(
                 prefill_token_ids, past_key_values=past_key_values)
         else:
-            # 命中“完整前缀复用”时，没有增量 prefill token，需要补算最后一个 prompt token 的 logits。
-            if len(prompt_token_ids) == 1:
-                logits, past_key_values = self.model_runner.forward_tokens(
-                    [prompt_token_ids[0]], past_key_values=None)
+            # 命中“完整前缀复用”且缓存中携带 next-token logits 时，直接进入 decode（0 prompt 计算）。
+            if (cached_entry is not None
+                    and reused_prefix_tokens == len(prompt_token_ids)
+                    and cached_entry.next_token_logits is not None):
+                logits = cached_entry.next_token_logits
+                self.logger.info("session_id=%s 复用缓存 logits，直接进入 decode",
+                                 req.session_id)
             else:
-                prefix_past = self.model_runner.truncate_past_key_values(
-                    past_key_values, len(prompt_token_ids) - 1)
-                logits, past_key_values = self.model_runner.forward_tokens(
-                    [prompt_token_ids[-1]], past_key_values=prefix_past)
+                # 未携带缓存 logits 时，补算最后一个 prompt token 的 logits。
+                if len(prompt_token_ids) == 1:
+                    logits, past_key_values = self.model_runner.forward_tokens(
+                        [prompt_token_ids[0]], past_key_values=None)
+                else:
+                    prefix_past = self.model_runner.truncate_past_key_values(
+                        past_key_values, len(prompt_token_ids) - 1)
+                    logits, past_key_values = self.model_runner.forward_tokens(
+                        [prompt_token_ids[-1]], past_key_values=prefix_past)
 
         generated_ids: List[int] = []
         eos_id = self.model_runner.eos_token_id()
@@ -462,7 +471,13 @@ class InferenceEngine:
         # 将“本次完整上下文 + 新生成”写回会话 KV。
         if req.use_cache:
             final_token_ids = prompt_token_ids + generated_ids
-            self.kv_cache.put(req.session_id, final_token_ids, past_key_values)
+            next_token_logits = logits if len(generated_ids) == 0 else None
+            self.kv_cache.put(
+                req.session_id,
+                final_token_ids,
+                past_key_values,
+                next_token_logits=next_token_logits,
+            )
 
         generated_text = self.model_runner.decode(generated_ids)
         full_text = self.model_runner.decode(prompt_token_ids + generated_ids)

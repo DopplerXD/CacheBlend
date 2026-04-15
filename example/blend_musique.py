@@ -119,7 +119,12 @@ def seed_session_from_checkpoint(kv_cache: KVCacheManager, src_session_id: str,
     if src is None:
         return False
     kv_cache.clear(dst_session_id)
-    kv_cache.put(dst_session_id, list(src.token_ids), src.past_key_values)
+    kv_cache.put(
+        dst_session_id,
+        list(src.token_ids),
+        src.past_key_values,
+        next_token_logits=src.next_token_logits,
+    )
     return True
 
 
@@ -193,7 +198,19 @@ def main() -> None:
         final_prompt = build_final_prompt(doc_prompts, q_prompt)
         stale_prompt = build_stale_prompt(doc_prompts, query_text)
 
-        # 方法 1：full reuse（完整 KV 复用，与 full prefill 相对）。
+        # 方法 1：基线（关闭缓存，完整 prefill）。
+        base_req = GenerateRequest(
+            session_id=f"musique-baseline-{sample_idx}",
+            prompt=final_prompt,
+            max_new_tokens=cfg.max_new_tokens,
+            temperature=cfg.temperature,
+            top_p=cfg.top_p,
+            use_cache=False,
+            recompute_strategy="none",
+        )
+        base_res = engine.generate(base_req)
+
+        # 方法 2：full reuse（先预填充同一 prompt，再完整复用 KV + 缓存 logits）。
         reuse_template_id = f"musique-reuse-template-{sample_idx}"
         warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
         reuse_session_id = f"musique-reuse-{sample_idx}"
@@ -213,7 +230,7 @@ def main() -> None:
         stale_warm_res = warm_prompt_cache(engine, kv_cache, stale_template_id,
                                            stale_prompt)
 
-        # 方法 2：高 KV 偏差重算。
+        # 方法 3：高 KV 偏差重算。
         kvd_session_id = f"musique-kvd-{sample_idx}"
         seed_session_from_checkpoint(kv_cache, stale_template_id, kvd_session_id)
         kvd_req = GenerateRequest(
@@ -230,7 +247,7 @@ def main() -> None:
         )
         kvd_res = engine.generate(kvd_req)
 
-        # 方法 3：Query-aware 重算。
+        # 方法 4：Query-aware 重算。
         qaw_session_id = f"musique-qaw-{sample_idx}"
         seed_session_from_checkpoint(kv_cache, stale_template_id, qaw_session_id)
         qaw_req = GenerateRequest(
@@ -247,17 +264,6 @@ def main() -> None:
         )
         qaw_res = engine.generate(qaw_req)
 
-        # 方法 4：基线（关闭缓存，完整 prefill）。
-        base_req = GenerateRequest(
-            session_id=f"musique-baseline-{sample_idx}",
-            prompt=final_prompt,
-            max_new_tokens=cfg.max_new_tokens,
-            temperature=cfg.temperature,
-            top_p=cfg.top_p,
-            use_cache=False,
-            recompute_strategy="none",
-        )
-        base_res = engine.generate(base_req)
         kvd_true_recompute = (kvd_res.recompute_mode == "kv_diff_recompute"
                               and kvd_res.recomputed_tokens > 0)
         qaw_true_recompute = (qaw_res.recompute_mode == "query_aware_recompute"

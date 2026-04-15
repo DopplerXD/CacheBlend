@@ -112,7 +112,12 @@ def seed_session_from_checkpoint(kv_cache: KVCacheManager, src_session_id: str,
     if src is None:
         return False
     kv_cache.clear(dst_session_id)
-    kv_cache.put(dst_session_id, list(src.token_ids), src.past_key_values)
+    kv_cache.put(
+        dst_session_id,
+        list(src.token_ids),
+        src.past_key_values,
+        next_token_logits=src.next_token_logits,
+    )
     return True
 
 
