@@ -1,0 +1,14 @@
+{"event": "run_start", "script": "example/blend_runner.py", "dataset": "inputs/wikimqa_s.json", "dataset_name": "wikimqa", "started_at": "2026-04-15 21:29:25", "model": "/root/models/Yi-6B", "max_new_tokens": 32, "temperature": 0.0, "top_p": 1.0, "qaw_ratio": 0.5, "kvd_ratio": 0.16, "suffix_len": 32, "qaw_random_seed": 2026}
+
+Traceback (most recent call last):
+  File "/root/github/CacheBlend/example/blend_runner.py", line 457, in <module>
+    main()
+  File "/root/github/CacheBlend/example/blend_runner.py", line 378, in main
+    [compute_f1(qaw_res.generated_text, a, model_runner.tokenizer) for a in answers]
+  File "/root/github/CacheBlend/example/blend_runner.py", line 378, in <listcomp>
+    [compute_f1(qaw_res.generated_text, a, model_runner.tokenizer) for a in answers]
+  File "/root/github/CacheBlend/example/utils.py", line 62, in compute_f1
+    a_pred = parse_generation(a_pred)
+  File "/root/github/CacheBlend/example/utils.py", line 26, in parse_generation
+    elif (s.split()[0]).startswith("No") or (s.split()[0]).startswith("no"):
+IndexError: list index out of range
