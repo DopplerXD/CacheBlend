@@ -190,9 +190,6 @@ def parse_args() -> argparse.Namespace:
                         help=">0 时跳过超过该长度的样本，0 表示不限制")
     parser.add_argument("--suffix-len", type=int, default=32)
     parser.add_argument("--qaw-random-seed", type=int, default=2026)
-    parser.add_argument("--enable-qaw-ablations",
-                        action="store_true",
-                        help="启用 qaw_no_suffix / qaw_random_topk（默认仅跑 qaw_default）")
     parser.add_argument("--summary-only",
                         action="store_true",
                         help="只写 run_summary，不写 sample_result")
@@ -230,7 +227,7 @@ def main() -> None:
         "max_prompt_tokens": args.max_prompt_tokens,
         "suffix_len": args.suffix_len,
         "qaw_random_seed": args.qaw_random_seed,
-        "enable_qaw_ablations": args.enable_qaw_ablations,
+        "qaw_variants_enabled": ["default", "no_suffix", "random_topk"],
     })
 
     dataset_path = os.path.join(ROOT_DIR, spec["dataset_path"])
@@ -270,19 +267,18 @@ def main() -> None:
         },
     }
 
-    qaw_variant_cfgs = [("qaw_default", "default", args.suffix_len, 0)]
-    if args.enable_qaw_ablations:
-        qaw_variant_cfgs.extend([
-            ("qaw_no_suffix", "no_suffix", 0, 0),
-            ("qaw_random_topk", "random_topk", args.suffix_len,
-             args.qaw_random_seed),
-        ])
+    qaw_variant_cfgs = [
+        ("qaw_default", "default", args.suffix_len, 0),
+        ("qaw_no_suffix", "no_suffix", 0, 0),
+        ("qaw_random_topk", "random_topk", args.suffix_len, args.qaw_random_seed),
+    ]
 
-    count = 0
+    selected_samples = []
+    sample_payloads: Dict[int, Dict] = {}
     skipped_oom_count = 0
     skipped_long_prompt_count = 0
     for sample_idx, ex in enumerate(eval_dataset, start=1):
-        if count >= args.count:
+        if len(selected_samples) >= args.count:
             break
         answers = answer_fn(ex.get("answers", []))
         doc_prompts, q_prompt = build_qa_prompt(ex, spec["query_prompt"])
@@ -305,12 +301,26 @@ def main() -> None:
                 })
                 _cleanup_after_sample(kv_cache)
                 continue
+        record = {
+            "sample_idx": sample_idx,
+            "ex": ex,
+            "answers": answers,
+            "query_text": query_text,
+            "final_prompt": final_prompt,
+            "stale_prompt": stale_prompt,
+        }
+        selected_samples.append(record)
+        sample_payloads[sample_idx] = record
 
-        stage = "full_prefill"
+    baseline_results: Dict[int, Dict] = {}
+    for sample in selected_samples:
+        sample_idx = sample["sample_idx"]
+        final_prompt = sample["final_prompt"]
+        answers = sample["answers"]
+        stage = "baseline_full_prefill"
         try:
-            # 1) full prefill
             base_req = GenerateRequest(
-                session_id=f"{args.dataset}-baseline-{sample_idx}",
+                session_id=f"{args.dataset}-baseline-pass-prefill-{sample_idx}",
                 prompt=final_prompt,
                 max_new_tokens=cfg.max_new_tokens,
                 temperature=cfg.temperature,
@@ -320,11 +330,10 @@ def main() -> None:
             )
             base_res = engine.generate(base_req)
 
-            # 2) full reuse
-            stage = "full_reuse"
-            reuse_template_id = f"{args.dataset}-reuse-template-{sample_idx}"
+            stage = "baseline_full_reuse"
+            reuse_template_id = f"{args.dataset}-baseline-pass-reuse-template-{sample_idx}"
             warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
-            reuse_session_id = f"{args.dataset}-reuse-{sample_idx}"
+            reuse_session_id = f"{args.dataset}-baseline-pass-reuse-{sample_idx}"
             seed_session_cache(kv_cache, reuse_template_id, reuse_session_id)
             reuse_req = GenerateRequest(
                 session_id=reuse_session_id,
@@ -337,17 +346,84 @@ def main() -> None:
             )
             reuse_res = engine.generate(reuse_req)
 
-            # 3) stale cache template for qaw variants
-            stage = "stale_cache_warm"
-            stale_template_id = f"{args.dataset}-stale-template-{sample_idx}"
+            base_f1 = _safe_max_f1(base_res.generated_text, answers,
+                                   model_runner.tokenizer)
+            reuse_f1 = _safe_max_f1(reuse_res.generated_text, answers,
+                                    model_runner.tokenizer)
+            baseline_results[sample_idx] = {
+                "base_res": base_res,
+                "reuse_res": reuse_res,
+                "base_f1": base_f1,
+                "reuse_f1": reuse_f1,
+            }
+        except torch.OutOfMemoryError:
+            skipped_oom_count += 1
+            output_writer.append_json({
+                "event": "sample_skipped",
+                "reason": "cuda_oom",
+                "sample_idx": sample_idx,
+                "stage": stage,
+            })
+        finally:
+            _cleanup_after_sample(kv_cache)
+
+    # 预热一次 QAW 路径，避免首次进入 query_aware 时把编译/初始化开销计入统计。
+    warmup_idx = next(iter(baseline_results), None)
+    if warmup_idx is not None:
+        warmup_sample = sample_payloads[warmup_idx]
+        stage = "qaw_warmup"
+        try:
+            stale_template_id = f"{args.dataset}-qaw-warmup-stale-template-{warmup_idx}"
+            warm_prompt_cache(engine, kv_cache, stale_template_id,
+                              warmup_sample["stale_prompt"])
+            for metric_key, qaw_variant, suffix_len, random_seed in qaw_variant_cfgs:
+                sid = f"{args.dataset}-qaw-warmup-{metric_key}-{warmup_idx}"
+                seed_session_cache(kv_cache, stale_template_id, sid)
+                warmup_req = GenerateRequest(
+                    session_id=sid,
+                    prompt=warmup_sample["final_prompt"],
+                    max_new_tokens=1,
+                    temperature=cfg.temperature,
+                    top_p=cfg.top_p,
+                    use_cache=True,
+                    recompute_strategy="query_aware",
+                    recomp_ratio=args.qaw_ratio,
+                    suffix_len=suffix_len,
+                    query_text=warmup_sample["query_text"],
+                    qaw_variant=qaw_variant,
+                    qaw_random_seed=random_seed,
+                )
+                engine.generate(warmup_req)
+        except torch.OutOfMemoryError:
+            skipped_oom_count += 1
+            output_writer.append_json({
+                "event": "sample_skipped",
+                "reason": "cuda_oom",
+                "sample_idx": warmup_idx,
+                "stage": stage,
+            })
+        finally:
+            _cleanup_after_sample(kv_cache)
+
+    for sample in selected_samples:
+        sample_idx = sample["sample_idx"]
+        if sample_idx not in baseline_results:
+            continue
+        answers = sample["answers"]
+        final_prompt = sample["final_prompt"]
+        stale_prompt = sample["stale_prompt"]
+        query_text = sample["query_text"]
+        ex = sample["ex"]
+        stage = "qaw_stale_cache_warm"
+        try:
+            stale_template_id = f"{args.dataset}-qaw-pass-stale-template-{sample_idx}"
             stale_warm_res = warm_prompt_cache(engine, kv_cache, stale_template_id,
                                                stale_prompt)
 
-            # 4) qaw variants
             stage = "qaw_variants"
             qaw_results: Dict[str, object] = {}
             for metric_key, qaw_variant, suffix_len, random_seed in qaw_variant_cfgs:
-                sid = f"{args.dataset}-{metric_key}-{sample_idx}"
+                sid = f"{args.dataset}-qaw-pass-{metric_key}-{sample_idx}"
                 seed_session_cache(kv_cache, stale_template_id, sid)
                 req = GenerateRequest(
                     session_id=sid,
@@ -365,10 +441,11 @@ def main() -> None:
                 )
                 qaw_results[metric_key] = engine.generate(req)
 
-            base_f1 = _safe_max_f1(base_res.generated_text, answers,
-                                   model_runner.tokenizer)
-            reuse_f1 = _safe_max_f1(reuse_res.generated_text, answers,
-                                    model_runner.tokenizer)
+            baseline = baseline_results[sample_idx]
+            base_res = baseline["base_res"]
+            reuse_res = baseline["reuse_res"]
+            base_f1 = baseline["base_f1"]
+            reuse_f1 = baseline["reuse_f1"]
 
             metrics["full_prefill"]["ttft"].append(base_res.first_token_latency_s)
             metrics["full_prefill"]["total"].append(base_res.total_latency_s)
@@ -426,7 +503,6 @@ def main() -> None:
                     },
                     "qaw_variants": sample_qaw_payload,
                 })
-            count += 1
         except torch.OutOfMemoryError:
             skipped_oom_count += 1
             output_writer.append_json({
@@ -440,7 +516,7 @@ def main() -> None:
 
     output_writer.append_json({
         "event": "run_summary",
-        "sample_count": count,
+        "sample_count": len(metrics["full_prefill"]["ttft"]),
         "full_prefill_avg_ttft_s": _mean(metrics["full_prefill"]["ttft"]),
         "full_reuse_avg_ttft_s": _mean(metrics["full_reuse"]["ttft"]),
         "qaw_default_avg_ttft_s": _mean(metrics["qaw_default"]["ttft"]),
