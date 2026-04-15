@@ -1,5 +1,6 @@
 """WikiMQA 实验脚本：三种策略对比（仅落盘日志，不向终端输出）。"""
 
+import argparse
 import importlib.util
 import json
 import os
@@ -159,7 +160,19 @@ def warm_prompt_cache(engine: InferenceEngine, kv_cache: KVCacheManager,
     return engine.generate(warm_req)
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="WikiMQA 对比实验脚本")
+    parser.add_argument("--count", type=int, default=10, help="最多评测样本数")
+    parser.add_argument("--qaw-ratio", type=float, default=0.3, help="query-aware 重算比例")
+    parser.add_argument("--output-dir",
+                        type=str,
+                        default=os.path.join(ROOT_DIR, "outputs"),
+                        help="实验日志输出目录")
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
     cfg = RuntimeConfig()
     cfg.max_new_tokens = 32
 
@@ -172,8 +185,7 @@ def main() -> None:
     kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
     engine = InferenceEngine(model_runner, kv_cache, logger)
 
-    output_writer = ExperimentOutputWriter.create(
-        os.path.join(ROOT_DIR, "outputs"), run_tag="wikimqa")
+    output_writer = ExperimentOutputWriter.create(args.output_dir, run_tag="wikimqa")
     output_writer.append_json({
         "event": "run_start",
         "script": "example/blend_wikimqa.py",
@@ -183,6 +195,8 @@ def main() -> None:
         "max_new_tokens": cfg.max_new_tokens,
         "temperature": cfg.temperature,
         "top_p": cfg.top_p,
+        "count": args.count,
+        "qaw_ratio": args.qaw_ratio,
     })
 
     dataset_path = os.path.join(ROOT_DIR, "inputs", "wikimqa_s.json")
@@ -261,7 +275,7 @@ def main() -> None:
             top_p=cfg.top_p,
             use_cache=True,
             recompute_strategy="query_aware",
-            recomp_ratio=0.3,
+            recomp_ratio=args.qaw_ratio,
             suffix_len=32,
             query_text=query_text,
         )
@@ -355,7 +369,7 @@ def main() -> None:
                 "f1": base_f1,
             },
         })
-        if count == 10:
+        if count >= args.count:
             break
 
     output_writer.append_json({
