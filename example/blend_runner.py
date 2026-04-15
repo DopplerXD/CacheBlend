@@ -1,4 +1,4 @@
-"""统一实验 Runner：支持 full_reuse/kv_diff/full_prefill 与 qaw 子变体。"""
+"""统一实验 Runner：支持 full_reuse/full_prefill 与 qaw 子变体。"""
 
 from __future__ import annotations
 
@@ -42,6 +42,16 @@ def _mean(values: List[float]) -> Optional[float]:
     if not values:
         return None
     return sum(values) / len(values)
+
+
+def _safe_max_f1(pred_text: str, answers: List[str], tokenizer) -> Optional[float]:
+    """稳健 F1：空输出或异常时返回 0，避免单样本中断整次实验。"""
+    if not answers:
+        return None
+    try:
+        return max([compute_f1(pred_text, a, tokenizer) for a in answers])
+    except Exception:
+        return 0.0
 
 
 def _normalize_wikimqa_answers(raw_answers) -> List[str]:
@@ -163,7 +173,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--count", type=int, default=30, help="最多评测样本数")
     parser.add_argument("--max-new-tokens", type=int, default=32)
     parser.add_argument("--qaw-ratio", type=float, default=0.30)
-    parser.add_argument("--kvd-ratio", type=float, default=0.16)
     parser.add_argument("--suffix-len", type=int, default=32)
     parser.add_argument("--qaw-random-seed", type=int, default=2026)
     parser.add_argument("--summary-only",
@@ -200,7 +209,6 @@ def main() -> None:
         "temperature": cfg.temperature,
         "top_p": cfg.top_p,
         "qaw_ratio": args.qaw_ratio,
-        "kvd_ratio": args.kvd_ratio,
         "suffix_len": args.suffix_len,
         "qaw_random_seed": args.qaw_random_seed,
     })
@@ -217,12 +225,6 @@ def main() -> None:
             "true_recompute": 0
         },
         "full_reuse": {
-            "ttft": [],
-            "total": [],
-            "f1": [],
-            "true_recompute": 0
-        },
-        "kv_diff": {
             "ttft": [],
             "total": [],
             "f1": [],
@@ -295,28 +297,11 @@ def main() -> None:
         )
         reuse_res = engine.generate(reuse_req)
 
-        # 3) stale cache template for kvd/qaw variants
+        # 3) stale cache template for qaw variants
         stale_template_id = f"{args.dataset}-stale-template-{sample_idx}"
         stale_warm_res = warm_prompt_cache(engine, kv_cache, stale_template_id, stale_prompt)
 
-        # 4) kv_diff
-        kvd_session_id = f"{args.dataset}-kvd-{sample_idx}"
-        seed_session_cache(kv_cache, stale_template_id, kvd_session_id)
-        kvd_req = GenerateRequest(
-            session_id=kvd_session_id,
-            prompt=final_prompt,
-            max_new_tokens=cfg.max_new_tokens,
-            temperature=cfg.temperature,
-            top_p=cfg.top_p,
-            use_cache=True,
-            recompute_strategy="kv_diff",
-            recomp_ratio=args.kvd_ratio,
-            suffix_len=args.suffix_len,
-            query_text=query_text,
-        )
-        kvd_res = engine.generate(kvd_req)
-
-        # 5) qaw variants
+        # 4) qaw variants
         qaw_results: Dict[str, object] = {}
         for metric_key, qaw_variant, suffix_len, random_seed in qaw_variant_cfgs:
             sid = f"{args.dataset}-{metric_key}-{sample_idx}"
@@ -337,15 +322,8 @@ def main() -> None:
             )
             qaw_results[metric_key] = engine.generate(req)
 
-        base_f1 = max(
-            [compute_f1(base_res.generated_text, a, model_runner.tokenizer) for a in answers]
-        ) if answers else None
-        reuse_f1 = max(
-            [compute_f1(reuse_res.generated_text, a, model_runner.tokenizer) for a in answers]
-        ) if answers else None
-        kvd_f1 = max(
-            [compute_f1(kvd_res.generated_text, a, model_runner.tokenizer) for a in answers]
-        ) if answers else None
+        base_f1 = _safe_max_f1(base_res.generated_text, answers, model_runner.tokenizer)
+        reuse_f1 = _safe_max_f1(reuse_res.generated_text, answers, model_runner.tokenizer)
 
         metrics["full_prefill"]["ttft"].append(base_res.first_token_latency_s)
         metrics["full_prefill"]["total"].append(base_res.total_latency_s)
@@ -357,15 +335,6 @@ def main() -> None:
         if reuse_f1 is not None:
             metrics["full_reuse"]["f1"].append(reuse_f1)
 
-        kvd_true_recompute = (kvd_res.recompute_mode == "kv_diff_recompute"
-                              and kvd_res.recomputed_tokens > 0)
-        if kvd_true_recompute:
-            metrics["kv_diff"]["true_recompute"] += 1
-        metrics["kv_diff"]["ttft"].append(kvd_res.first_token_latency_s)
-        metrics["kv_diff"]["total"].append(kvd_res.total_latency_s)
-        if kvd_f1 is not None:
-            metrics["kv_diff"]["f1"].append(kvd_f1)
-
         sample_qaw_payload = {}
         for metric_key, _, _, _ in qaw_variant_cfgs:
             qaw_res = qaw_results[metric_key]
@@ -374,9 +343,7 @@ def main() -> None:
             if qaw_true_recompute:
                 metrics[metric_key]["true_recompute"] += 1
 
-            qaw_f1 = max(
-                [compute_f1(qaw_res.generated_text, a, model_runner.tokenizer) for a in answers]
-            ) if answers else None
+            qaw_f1 = _safe_max_f1(qaw_res.generated_text, answers, model_runner.tokenizer)
             metrics[metric_key]["ttft"].append(qaw_res.first_token_latency_s)
             metrics[metric_key]["total"].append(qaw_res.total_latency_s)
             if qaw_f1 is not None:
@@ -411,15 +378,6 @@ def main() -> None:
                     "reused_prefix_tokens": reuse_res.reused_prefix_tokens,
                     "f1": reuse_f1,
                 },
-                "kv_diff": {
-                    "generated_text": kvd_res.generated_text,
-                    "ttft_s": kvd_res.first_token_latency_s,
-                    "total_s": kvd_res.total_latency_s,
-                    "recomputed_tokens": kvd_res.recomputed_tokens,
-                    "recompute_mode": kvd_res.recompute_mode,
-                    "true_recompute": kvd_true_recompute,
-                    "f1": kvd_f1,
-                },
                 "qaw_variants": sample_qaw_payload,
             })
 
@@ -428,23 +386,19 @@ def main() -> None:
         "sample_count": count,
         "full_prefill_avg_ttft_s": _mean(metrics["full_prefill"]["ttft"]),
         "full_reuse_avg_ttft_s": _mean(metrics["full_reuse"]["ttft"]),
-        "kv_diff_avg_ttft_s": _mean(metrics["kv_diff"]["ttft"]),
         "qaw_default_avg_ttft_s": _mean(metrics["qaw_default"]["ttft"]),
         "qaw_no_suffix_avg_ttft_s": _mean(metrics["qaw_no_suffix"]["ttft"]),
         "qaw_random_topk_avg_ttft_s": _mean(metrics["qaw_random_topk"]["ttft"]),
         "full_prefill_avg_total_s": _mean(metrics["full_prefill"]["total"]),
         "full_reuse_avg_total_s": _mean(metrics["full_reuse"]["total"]),
-        "kv_diff_avg_total_s": _mean(metrics["kv_diff"]["total"]),
         "qaw_default_avg_total_s": _mean(metrics["qaw_default"]["total"]),
         "qaw_no_suffix_avg_total_s": _mean(metrics["qaw_no_suffix"]["total"]),
         "qaw_random_topk_avg_total_s": _mean(metrics["qaw_random_topk"]["total"]),
         "full_prefill_avg_f1": _mean(metrics["full_prefill"]["f1"]),
         "full_reuse_avg_f1": _mean(metrics["full_reuse"]["f1"]),
-        "kv_diff_avg_f1": _mean(metrics["kv_diff"]["f1"]),
         "qaw_default_avg_f1": _mean(metrics["qaw_default"]["f1"]),
         "qaw_no_suffix_avg_f1": _mean(metrics["qaw_no_suffix"]["f1"]),
         "qaw_random_topk_avg_f1": _mean(metrics["qaw_random_topk"]["f1"]),
-        "kvd_true_recompute_count": metrics["kv_diff"]["true_recompute"],
         "qaw_default_true_recompute_count": metrics["qaw_default"]["true_recompute"],
         "qaw_no_suffix_true_recompute_count": metrics["qaw_no_suffix"]["true_recompute"],
         "qaw_random_topk_true_recompute_count":

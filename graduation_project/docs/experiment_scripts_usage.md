@@ -78,7 +78,6 @@ python example/blend_musique_curve.py
 - 作用：统一 Runner，一次跑：
   - `full_prefill`
   - `full_reuse`
-  - `kv_diff`
   - `qaw_default`
   - `qaw_no_suffix`
   - `qaw_random_topk`
@@ -93,7 +92,6 @@ python example/blend_runner.py --dataset squad --count 100 --qaw-ratio 0.3 --suf
   - `--dataset`：`musique|wikimqa|squad`
   - `--count`：样本数量上限
   - `--qaw-ratio`：qaw 重算比例
-  - `--kvd-ratio`：kvd 重算比例
   - `--suffix-len`：尾部强制重算长度
   - `--qaw-random-seed`：`qaw_random_topk` 随机种子
   - `--summary-only`：只写 `run_summary`
@@ -178,4 +176,3 @@ python scripts/summarize_outputs_to_csv.py --inputs "outputs/*.output" --event r
 ```bash
 python scripts/analyze_musique_degradation_cases.py --inputs "outputs/*musique*.output" --qaw-key qaw_default --top-k 20
 ```
-
