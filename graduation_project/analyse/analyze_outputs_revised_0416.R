@@ -43,6 +43,35 @@ safe_parse_json <- function(line) {
   out
 }
 
+fmt_key_num <- function(x) {
+  if (is.null(x) || length(x) == 0) return(NA_character_)
+  x <- suppressWarnings(as.numeric(x))
+  if (length(x) == 0 || is.na(x[1])) return(NA_character_)
+  format(x[1], scientific = FALSE, trim = TRUE, digits = 15)
+}
+
+build_baseline_group_key <- function(dataset_name, count_value, max_new_tokens,
+                                     temperature, top_p, model_name) {
+  if (is.null(dataset_name) || is.na(dataset_name) || dataset_name == "") return(NA_character_)
+  count_part <- fmt_key_num(count_value)
+  max_new_tokens_part <- fmt_key_num(max_new_tokens)
+  temperature_part <- fmt_key_num(temperature)
+  top_p_part <- fmt_key_num(top_p)
+  model_part <- as.character(model_name %||% NA_character_)
+  if (any(is.na(c(count_part, max_new_tokens_part, temperature_part, top_p_part, model_part)))) {
+    return(NA_character_)
+  }
+  paste(
+    dataset_name,
+    paste0("count=", count_part),
+    paste0("max_new_tokens=", max_new_tokens_part),
+    paste0("temperature=", temperature_part),
+    paste0("top_p=", top_p_part),
+    paste0("model=", model_part),
+    sep = "|"
+  )
+}
+
 infer_dataset <- function(file_name, dataset_field = NULL) {
   x <- tolower(paste(file_name, dataset_field %||% "", collapse = " "))
   if (str_detect(x, "musique")) return("musique")
@@ -165,6 +194,9 @@ extract_summary_rows <- function(ev, meta_row, summary_order, drop_curve_first) 
         file_label = meta_row$file_label,
         is_curve = meta_row$is_curve,
         curve_mode = meta_row$curve_mode,
+        baseline_only = meta_row$baseline_only,
+        baseline_mode = meta_row$baseline_mode,
+        baseline_group_key = meta_row$baseline_group_key,
         summary_order = summary_order,
         drop_curve_first = drop_curve_first,
         sample_count = safe_int(ev$sample_count %||% meta_row$count_hint),
@@ -196,6 +228,9 @@ extract_method_node <- function(ev, meta_row, method, node) {
     dataset = meta_row$dataset,
     file_label = meta_row$file_label,
     is_curve = meta_row$is_curve,
+    baseline_only = meta_row$baseline_only,
+    baseline_mode = meta_row$baseline_mode,
+    baseline_group_key = meta_row$baseline_group_key,
     sample_idx = safe_int(ev$sample_idx),
     method = method,
     ttft_s = safe_num(node$ttft_s),
@@ -234,7 +269,8 @@ for (path in all_files) {
   run_start <- keep(events, ~ identical(.x$event, "run_start"))
   run_start <- if (length(run_start) > 0) run_start[[1]] else NULL
   script_name <- as.character(run_start$script %||% "unknown")
-  dataset_name <- infer_dataset(file_name, run_start$dataset %||% "")
+  dataset_name <- as.character(run_start$dataset_name %||%
+                                 infer_dataset(file_name, run_start$dataset %||% ""))
   curve_mode <- detect_curve_mode(script_name, run_start)
   is_curve <- is_experiment_curve(script_name, run_start)
 
@@ -267,6 +303,24 @@ for (path in all_files) {
   if (is.na(count_hint) && length(run_summaries) > 0) {
     count_hint <- safe_int(run_summaries[[1]]$sample_count)
   }
+  baseline_only <- isTRUE(run_start$baseline_only %||% FALSE)
+  baseline_mode <- as.character(run_start$baseline_mode %||%
+                                  ifelse(baseline_only, "standalone_hot", "native"))
+  max_new_tokens <- safe_int(run_start$max_new_tokens)
+  temperature <- safe_num(run_start$temperature)
+  top_p <- safe_num(run_start$top_p)
+  model_name <- as.character(run_start$model %||% NA_character_)
+  baseline_group_key <- as.character(
+    run_start$baseline_group_key %||%
+      build_baseline_group_key(
+        dataset_name = dataset_name,
+        count_value = count_hint,
+        max_new_tokens = max_new_tokens,
+        temperature = temperature,
+        top_p = top_p,
+        model_name = model_name
+      )
+  )
 
   meta_row <- tibble(
     source_file = file_name,
@@ -278,6 +332,13 @@ for (path in all_files) {
     is_curve = is_curve,
     curve_mode = curve_mode,
     count_hint = count_hint,
+    baseline_only = baseline_only,
+    baseline_mode = baseline_mode,
+    baseline_group_key = baseline_group_key,
+    max_new_tokens = max_new_tokens,
+    temperature = temperature,
+    top_p = top_p,
+    model = model_name,
     qaw_ratio_min = safe_num(run_start$qaw_ratio_min),
     qaw_ratio_max = safe_num(run_start$qaw_ratio_max),
     qaw_ratio_step = safe_num(run_start$qaw_ratio_step),
@@ -334,13 +395,6 @@ if (nrow(summary_long_raw) == 0) {
 }
 
 summary_long_clean <- summary_long_raw %>%
-  filter(!drop_curve_first) %>%
-  filter(!is.na(value))
-
-curve_dropped_df <- summary_long_raw %>%
-  filter(drop_curve_first)
-
-summary_long_clean <- summary_long_clean %>%
   mutate(
     method_group = case_when(
       method %in% c("query_aware", "qaw_default") ~ "query_aware",
@@ -350,9 +404,107 @@ summary_long_clean <- summary_long_clean %>%
     )
   )
 
-sample_df_clean <- sample_df_raw %>%
+curve_dropped_df <- summary_long_raw %>%
+  filter(drop_curve_first)
+
+sample_df_raw <- sample_df_raw %>%
+  mutate(
+    method_group = case_when(
+      method %in% c("query_aware", "qaw_default") ~ "query_aware",
+      method == "qaw_no_suffix" ~ "qaw_no_suffix",
+      method == "qaw_random_topk" ~ "qaw_random_topk",
+      TRUE ~ method
+    )
+  )
+
+summary_baseline_override <- summary_long_clean %>%
+  filter(baseline_only) %>%
+  filter(!drop_curve_first) %>%
+  filter(!is.na(value)) %>%
+  filter(method_group %in% c("full_prefill", "full_reuse")) %>%
+  arrange(source_file, summary_order) %>%
+  group_by(baseline_group_key, metric, method_group) %>%
+  summarise(
+    override_value = dplyr::last(value),
+    baseline_source_file = dplyr::last(source_file),
+    .groups = "drop"
+  )
+
+summary_long_clean <- summary_long_clean %>%
+  filter(!baseline_only) %>%
+  filter(!drop_curve_first) %>%
+  filter(!is.na(value)) %>%
+  left_join(
+    summary_baseline_override,
+    by = c("baseline_group_key", "metric", "method_group")
+  ) %>%
+  mutate(
+    metric_source = case_when(
+      method_group %in% c("full_prefill", "full_reuse") & !is.na(override_value) ~
+        "standalone_baseline_override",
+      TRUE ~ "native"
+    ),
+    baseline_source_file = if_else(
+      metric_source == "standalone_baseline_override",
+      baseline_source_file,
+      NA_character_
+    ),
+    value = if_else(
+      metric_source == "standalone_baseline_override",
+      override_value,
+      value
+    )
+  ) %>%
+  select(-override_value)
+
+sample_baseline_override <- sample_df_raw %>%
+  filter(baseline_only) %>%
   filter(!is_curve) %>%
-  filter(!is.na(sample_idx))
+  filter(!is.na(sample_idx)) %>%
+  filter(method_group %in% c("full_prefill", "full_reuse")) %>%
+  arrange(source_file, sample_idx) %>%
+  group_by(baseline_group_key, sample_idx, method_group) %>%
+  summarise(
+    override_ttft_s = dplyr::last(ttft_s),
+    override_total_s = dplyr::last(total_s),
+    override_recomputed_tokens = dplyr::last(recomputed_tokens),
+    override_f1 = dplyr::last(f1),
+    override_rouge_l = dplyr::last(rouge_l),
+    override_true_recompute = dplyr::last(true_recompute),
+    baseline_source_file = dplyr::last(source_file),
+    .groups = "drop"
+  )
+
+sample_df_clean <- sample_df_raw %>%
+  filter(!baseline_only) %>%
+  filter(!is_curve) %>%
+  filter(!is.na(sample_idx)) %>%
+  left_join(
+    sample_baseline_override,
+    by = c("baseline_group_key", "sample_idx", "method_group")
+  ) %>%
+  mutate(
+    metric_source = case_when(
+      method_group %in% c("full_prefill", "full_reuse") & !is.na(baseline_source_file) ~
+        "standalone_baseline_override",
+      TRUE ~ "native"
+    ),
+    ttft_s = if_else(metric_source == "standalone_baseline_override",
+                     coalesce(override_ttft_s, ttft_s), ttft_s),
+    total_s = if_else(metric_source == "standalone_baseline_override",
+                      coalesce(override_total_s, total_s), total_s),
+    recomputed_tokens = if_else(metric_source == "standalone_baseline_override",
+                                coalesce(override_recomputed_tokens, recomputed_tokens),
+                                recomputed_tokens),
+    f1 = if_else(metric_source == "standalone_baseline_override",
+                 coalesce(override_f1, f1), f1),
+    rouge_l = if_else(metric_source == "standalone_baseline_override",
+                      coalesce(override_rouge_l, rouge_l), rouge_l),
+    true_recompute = if_else(metric_source == "standalone_baseline_override",
+                             coalesce(override_true_recompute, true_recompute),
+                             true_recompute)
+  ) %>%
+  select(-starts_with("override_"))
 
 write.csv(file_catalog_df, file.path(out_dir, "file_catalog.csv"), row.names = FALSE)
 write.csv(ignored_files_df, file.path(out_dir, "ignored_files.csv"), row.names = FALSE)
@@ -905,7 +1057,8 @@ inventory_lines <- c(
   "",
   "## 分析规则",
   "",
-  "- 所有 curve 输出文件均剔除了文件内第一组 `run_summary`，以规避首组异常预热/额外 prefill 干扰。",
+  "- 旧版 curve 输出文件会剔除文件内第一组 `run_summary`；带有独立 hot baseline 覆盖的新流程不再机械丢首组。",
+  "- 若存在匹配的 standalone hot baseline 文件，则优先用其覆盖目标文件中的 `full_prefill/full_reuse` 指标；`query_aware` 保持原输出。",
   "- 只有在 `count` 和关键参数范围一致时，才允许把不同数据集放在同一张图中比较。",
   "- `outputs/0416_sum/` 中的 orchestration 日志和失败/无指标文件不会进入正式分析。",
   "",
