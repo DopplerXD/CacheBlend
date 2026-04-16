@@ -74,6 +74,58 @@ python example/blend_musique_curve.py
 ```
 - 输出：`outputs/YYYYMMDDHHMM_musique_curve.output`
 
+### 2.5.1 `example/blend_curve.py`
+- 作用：统一的 ratio 曲线实验脚本，支持 `musique / wikimqa`，固定 `suffix_len=32`。
+- 默认参数：
+  - `--count 50`
+  - `--qaw-ratio-min 0.0`
+  - `--qaw-ratio-max 1.0`
+  - `--qaw-ratio-step 0.05`
+- 运行：
+```bash
+python example/blend_curve.py --dataset musique
+python example/blend_curve.py --dataset wikimqa
+```
+- 输出：
+  - `musique`：`outputs/YYYYMMDDHHMM_musique_curve.output`
+  - `wikimqa`：`outputs/YYYYMMDDHHMM_wikimqa_curve.output`
+
+### 2.5.2 `example/blend_suffix_curve.py`
+- 作用：统一的 `suffix_len` 曲线实验脚本，支持 `musique / wikimqa`，固定 `qaw_ratio`。
+- 默认参数：
+  - `--count 50`
+  - `--qaw-ratio 0.7`
+  - `--suffix-len-min 0`
+  - `--suffix-len-max 32`
+  - `--suffix-len-step 4`
+- 运行：
+```bash
+python example/blend_suffix_curve.py --dataset musique
+python example/blend_suffix_curve.py --dataset wikimqa
+```
+- 输出：
+  - `musique`：`outputs/YYYYMMDDHHMM_musique_suffix_curve.output`
+  - `wikimqa`：`outputs/YYYYMMDDHHMM_wikimqa_suffix_curve.output`
+
+### 2.5.3 `example/blend_ratio_suffix_curve.py`
+- 作用：统一的 `ratio x suffix_len` 网格实验脚本，支持 `musique / wikimqa`。
+- 默认参数：
+  - `--count 50`
+  - `--qaw-ratio-min 0.45`
+  - `--qaw-ratio-max 0.80`
+  - `--qaw-ratio-step 0.05`
+  - `--suffix-len-min 0`
+  - `--suffix-len-max 32`
+  - `--suffix-len-step 8`
+- 运行：
+```bash
+python example/blend_ratio_suffix_curve.py --dataset musique
+python example/blend_ratio_suffix_curve.py --dataset wikimqa
+```
+- 输出：
+  - `musique`：`outputs/YYYYMMDDHHMM_musique_ratio_suffix_curve.output`
+  - `wikimqa`：`outputs/YYYYMMDDHHMM_wikimqa_ratio_suffix_curve.output`
+
 ### 2.6 `example/blend_runner.py`（推荐）
 - 作用：统一 Runner，一次跑：
   - `full_prefill`
