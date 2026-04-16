@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import math
 import os
@@ -42,14 +43,23 @@ except ImportError as exc:  # pragma: no cover - runtime dependency hint
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
-EXAMPLE_DIR = os.path.join(ROOT_DIR, "example")
-if EXAMPLE_DIR not in sys.path:
-    sys.path.insert(0, EXAMPLE_DIR)
 
 from config import RuntimeConfig
 from model.yi_model import YiModelRunner
 from utils.logging_utils import setup_logger
-from example.utils import build_qa_prompt, normalize_question
+
+EXAMPLE_UTILS_PATH = os.path.join(ROOT_DIR, "example", "utils.py")
+EXAMPLE_UTILS_SPEC = importlib.util.spec_from_file_location(
+    "cacheblend_example_utils_for_visualize",
+    EXAMPLE_UTILS_PATH,
+)
+if EXAMPLE_UTILS_SPEC is None or EXAMPLE_UTILS_SPEC.loader is None:
+    raise ImportError(f"无法加载 example/utils.py: {EXAMPLE_UTILS_PATH}")
+EXAMPLE_UTILS_MODULE = importlib.util.module_from_spec(EXAMPLE_UTILS_SPEC)
+EXAMPLE_UTILS_SPEC.loader.exec_module(EXAMPLE_UTILS_MODULE)
+
+build_qa_prompt = EXAMPLE_UTILS_MODULE.build_qa_prompt
+normalize_question = EXAMPLE_UTILS_MODULE.normalize_question
 
 
 DATASET_SPECS: Dict[str, Dict[str, str]] = {
