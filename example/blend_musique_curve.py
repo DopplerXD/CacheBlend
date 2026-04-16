@@ -75,6 +75,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--qaw-ratio-step", type=float, default=0.05)
     parser.add_argument("--suffix-len", type=int, default=32)
     parser.add_argument("--max-new-tokens", type=int, default=32)
+    parser.add_argument("--output-dir",
+                        type=str,
+                        default=os.path.join(ROOT_DIR, "outputs"),
+                        help="实验日志输出目录")
+    parser.add_argument("--run-tag",
+                        type=str,
+                        default="musique_curve",
+                        help="输出文件 run_tag")
     return parser.parse_args()
 
 
@@ -273,8 +281,8 @@ def main() -> None:
 
     model_runner = YiModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
                                  logger)
-    output_writer = ExperimentOutputWriter.create(
-        os.path.join(ROOT_DIR, "outputs"), run_tag="musique_curve")
+    output_writer = ExperimentOutputWriter.create(args.output_dir,
+                                                  run_tag=args.run_tag)
 
     ratios = ratio_grid(args.qaw_ratio_min, args.qaw_ratio_max,
                         args.qaw_ratio_step)

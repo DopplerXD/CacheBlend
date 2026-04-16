@@ -87,6 +87,10 @@ def build_stale_prompt(doc_prompts, query_text):
 def main() -> None:
     cfg = RuntimeConfig()
     cfg.max_new_tokens = 10
+    kvd_ratio = 0.16
+    kvd_suffix_len = 32
+    qaw_ratio = 0.50
+    qaw_suffix_len = 32
 
     output_writer = ExperimentOutputWriter.create(
         os.path.join(ROOT_DIR, "outputs"), run_tag="blend")
@@ -109,6 +113,13 @@ def main() -> None:
     engine = InferenceEngine(model_runner, kv_cache, logger)
     logger.info("实验结构化日志文件: %s", output_writer.file_path)
     logger.info("实验控制台风格日志文件: %s", console_log_path)
+    logger.info(
+        "本次实验设置: kv_diff(ratio=%.2f,suffix_len=%d), query_aware(ratio=%.2f,suffix_len=%d)",
+        kvd_ratio,
+        kvd_suffix_len,
+        qaw_ratio,
+        qaw_suffix_len,
+    )
     output_writer.append_json({
         "event": "run_start",
         "script": "example/blend.py",
@@ -119,6 +130,10 @@ def main() -> None:
         "max_new_tokens": cfg.max_new_tokens,
         "temperature": cfg.temperature,
         "top_p": cfg.top_p,
+        "kv_diff_ratio": kvd_ratio,
+        "kv_diff_suffix_len": kvd_suffix_len,
+        "query_aware_ratio": qaw_ratio,
+        "query_aware_suffix_len": qaw_suffix_len,
     })
 
     reuse_ttft_list = []
@@ -190,8 +205,8 @@ def main() -> None:
             top_p=cfg.top_p,
             use_cache=True,
             recompute_strategy="kv_diff",
-            recomp_ratio=0.16,
-            suffix_len=32,
+            recomp_ratio=kvd_ratio,
+            suffix_len=kvd_suffix_len,
             query_text=query_text,
         )
         kvd_res = engine.generate(kvd_req)
@@ -207,8 +222,8 @@ def main() -> None:
             top_p=cfg.top_p,
             use_cache=True,
             recompute_strategy="query_aware",
-            recomp_ratio=0.50,
-            suffix_len=32,
+            recomp_ratio=qaw_ratio,
+            suffix_len=qaw_suffix_len,
             query_text=query_text,
         )
         qaw_res = engine.generate(qaw_req)
@@ -258,6 +273,10 @@ def main() -> None:
             "sample_idx": sample_idx,
             "chunk_num": chunk_num,
             "stale_cache_prompt_tokens": stale_warm_res.prompt_tokens,
+            "kv_diff_ratio": kvd_ratio,
+            "kv_diff_suffix_len": kvd_suffix_len,
+            "query_aware_ratio": qaw_ratio,
+            "query_aware_suffix_len": qaw_suffix_len,
             "full_prefill": {
                 "generated_text": base_res.generated_text,
                 "recompute_mode": base_res.recompute_mode,
@@ -313,6 +332,10 @@ def main() -> None:
         "full_reuse_avg_reused_prefix_tokens":
         (sum(reuse_reuse_tokens_list) / len(reuse_reuse_tokens_list))
         if reuse_reuse_tokens_list else None,
+        "kv_diff_ratio": kvd_ratio,
+        "kv_diff_suffix_len": kvd_suffix_len,
+        "query_aware_ratio": qaw_ratio,
+        "query_aware_suffix_len": qaw_suffix_len,
         "kvd_true_recompute_count": kvd_true_recompute_count,
         "qaw_true_recompute_count": qaw_true_recompute_count,
         "ended_at": utc8_now_str(),
