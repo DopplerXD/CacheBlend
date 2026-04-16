@@ -304,7 +304,7 @@ def prepare_visualization_bundle(
         prompt_token_ids=prompt_token_ids,
         query_token_ids=query_token_ids,
         query_prompt_positions=query_prompt_positions,
-        scores=scores.detach().cpu(),
+        scores=scores.detach().float().cpu(),
         selected_indices=selected_indices.detach().cpu(),
     )
 
@@ -336,8 +336,8 @@ def plot_similarity_heatmap(
         [bundle.prompt_token_ids[int(i)] for i in top_candidates.tolist()]
     )
     query_emb = model_runner.lookup_token_embeddings(query_ids_show)
-    cand_emb = torch.nn.functional.normalize(cand_emb, dim=-1)
-    query_emb = torch.nn.functional.normalize(query_emb, dim=-1)
+    cand_emb = torch.nn.functional.normalize(cand_emb.float(), dim=-1)
+    query_emb = torch.nn.functional.normalize(query_emb.float(), dim=-1)
     sim = (cand_emb @ query_emb.transpose(0, 1)).detach().cpu().numpy()
 
     fig_h = max(6, 0.24 * sim.shape[0])
@@ -524,7 +524,7 @@ def plot_attention_heatmap(
 
     layer_idx = attention_layer
     attn_tensor = outputs.attentions[layer_idx][0]  # [heads, seq, seq]
-    attn_mean = attn_tensor.mean(dim=0).detach().cpu()  # [seq, seq]
+    attn_mean = attn_tensor.mean(dim=0).detach().float().cpu()  # [seq, seq]
 
     query_positions = bundle.query_prompt_positions[-max(1, query_topk):]
     selected_positions = [int(i) for i in bundle.selected_indices.tolist() if i < len(bundle.prompt_token_ids)]
