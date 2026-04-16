@@ -1,0 +1,67 @@
+2026-04-16 16:49:17 | INFO | blend_mvp | 加载 tokenizer: /root/models/Yi-6B
+2026-04-16 16:49:17 | INFO | blend_mvp | 加载模型: /root/models/Yi-6B, device=cuda, dtype=torch.bfloat16
+2026-04-16 16:49:21 | INFO | blend_mvp | 实验结构化日志文件: /root/github/CacheBlend/outputs/202604170049_blend_baselines.output
+2026-04-16 16:49:21 | INFO | blend_mvp | 实验控制台风格日志文件: /root/github/CacheBlend/outputs/202604170049_blend_baselines_console.output
+2026-04-16 16:49:21 | INFO | blend_mvp | 本次实验设置: kv_diff(ratio=0.16,suffix_len=32), query_aware(ratio=0.50,suffix_len=32)
+2026-04-16 16:49:23 | INFO | blend_mvp | 命中 KV 缓存 session_id=blend-warmup-reuse-1, 复用前缀 token=3796, 增量 prefill token=0
+2026-04-16 16:49:23 | INFO | blend_mvp | session_id=blend-warmup-reuse-1 复用缓存 logits，直接进入 decode
+2026-04-16 16:49:23 | INFO | blend_mvp | 
+===== 样本 1 开始，chunk_num=6 =====
+2026-04-16 16:49:24 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:25 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-1, 复用前缀 token=3796, 增量 prefill token=0
+2026-04-16 16:49:25 | INFO | blend_mvp | session_id=sample-full-reuse-1 复用缓存 logits，直接进入 decode
+2026-04-16 16:49:25 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:25 | INFO | blend_mvp | 
+===== 样本 2 开始，chunk_num=5 =====
+2026-04-16 16:49:26 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:27 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-2, 复用前缀 token=3402, 增量 prefill token=0
+2026-04-16 16:49:27 | INFO | blend_mvp | session_id=sample-full-reuse-2 复用缓存 logits，直接进入 decode
+2026-04-16 16:49:27 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:27 | INFO | blend_mvp | 
+===== 样本 3 开始，chunk_num=5 =====
+2026-04-16 16:49:28 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:29 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-3, 复用前缀 token=3345, 增量 prefill token=0
+2026-04-16 16:49:29 | INFO | blend_mvp | session_id=sample-full-reuse-3 复用缓存 logits，直接进入 decode
+2026-04-16 16:49:29 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:29 | INFO | blend_mvp | 
+===== 样本 4 开始，chunk_num=6 =====
+2026-04-16 16:49:30 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:31 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-4, 复用前缀 token=3814, 增量 prefill token=0
+2026-04-16 16:49:31 | INFO | blend_mvp | session_id=sample-full-reuse-4 复用缓存 logits，直接进入 decode
+2026-04-16 16:49:31 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:32 | INFO | blend_mvp | 
+===== 样本 5 开始，chunk_num=6 =====
+2026-04-16 16:49:32 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:33 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-5, 复用前缀 token=3669, 增量 prefill token=0
+2026-04-16 16:49:33 | INFO | blend_mvp | session_id=sample-full-reuse-5 复用缓存 logits，直接进入 decode
+2026-04-16 16:49:33 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:33 | INFO | blend_mvp | 
+===== 样本 6 开始，chunk_num=5 =====
+2026-04-16 16:49:34 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:34 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-6, 复用前缀 token=3746, 增量 prefill token=0
+2026-04-16 16:49:34 | INFO | blend_mvp | session_id=sample-full-reuse-6 复用缓存 logits，直接进入 decode
+2026-04-16 16:49:35 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:35 | INFO | blend_mvp | 
+===== 样本 7 开始，chunk_num=6 =====
+2026-04-16 16:49:36 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:36 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-7, 复用前缀 token=3862, 增量 prefill token=0
+2026-04-16 16:49:36 | INFO | blend_mvp | session_id=sample-full-reuse-7 复用缓存 logits，直接进入 decode
+2026-04-16 16:49:37 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:37 | INFO | blend_mvp | 
+===== 样本 8 开始，chunk_num=6 =====
+2026-04-16 16:49:38 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:38 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-8, 复用前缀 token=3801, 增量 prefill token=0
+2026-04-16 16:49:38 | INFO | blend_mvp | session_id=sample-full-reuse-8 复用缓存 logits，直接进入 decode
+2026-04-16 16:49:39 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:39 | INFO | blend_mvp | 
+===== 样本 9 开始，chunk_num=5 =====
+2026-04-16 16:49:40 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:40 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-9, 复用前缀 token=3419, 增量 prefill token=0
+2026-04-16 16:49:40 | INFO | blend_mvp | session_id=sample-full-reuse-9 复用缓存 logits，直接进入 decode
+2026-04-16 16:49:40 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:41 | INFO | blend_mvp | 
+===== 样本 10 开始，chunk_num=6 =====
+2026-04-16 16:49:42 | INFO | blend_mvp | 命中 EOS，提前结束生成
+2026-04-16 16:49:42 | INFO | blend_mvp | 命中 KV 缓存 session_id=sample-full-reuse-10, 复用前缀 token=3943, 增量 prefill token=0
+2026-04-16 16:49:42 | INFO | blend_mvp | session_id=sample-full-reuse-10 复用缓存 logits，直接进入 decode
+2026-04-16 16:49:42 | INFO | blend_mvp | 命中 EOS，提前结束生成
