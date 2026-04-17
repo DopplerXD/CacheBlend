@@ -4,8 +4,7 @@
 python example/blend_cmrc.py \
   --model-name /root/models/Qwen2.5-1.5B \
   --count 50 \
-  --qaw-ratio 0.7 \
-  --suffix-len 32 \
+  --qaw-ratio 0.7
 
 # 2. CMRC ratio curve
 python example/blend_curve.py \
