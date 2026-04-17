@@ -1,0 +1,29 @@
+"file_name","title","chart_type","data_scope","meaning","value","recommend_for_paper","paper_order"
+"fig_main_methods_blend_demo.png","blend_demo 主实验方法对比","Grouped Bar","blend_demo 非曲线主实验","比较 full_prefill 和 query_aware 在 TTFT、总时延和 F1 上的整体表现。","适合做该数据集主结果概览，直接服务于论文主线的 prefill-vs-qaw 对比。",FALSE,NA
+"fig_main_methods_musique.png","musique 主实验方法对比","Grouped Bar","musique 非曲线主实验","比较 full_prefill 和 query_aware 在 TTFT、总时延和 F1 上的整体表现。","适合做该数据集主结果概览，直接服务于论文主线的 prefill-vs-qaw 对比。",TRUE,1
+"fig_main_methods_wikimqa.png","wikimqa 主实验方法对比","Grouped Bar","wikimqa 非曲线主实验","比较 full_prefill 和 query_aware 在 TTFT、总时延和 F1 上的整体表现。","适合做该数据集主结果概览，直接服务于论文主线的 prefill-vs-qaw 对比。",TRUE,2
+"fig_ratio_curve_0416_blend_curve_default.png","blend curve default 比例扫描曲线","Line","blend curve default","展示重算比例变化对 query_aware 延迟与质量的影响，并与 full_prefill 基线对照。","最适合解释参数敏感性和效率-质量权衡，是论文中参数分析的核心图。",FALSE,NA
+"fig_ratio_curve_0416_musique_curve_025_100.png","musique curve 025 100 比例扫描曲线","Line","musique curve 025 100","展示重算比例变化对 query_aware 延迟与质量的影响，并与 full_prefill 基线对照。","最适合解释参数敏感性和效率-质量权衡，是论文中参数分析的核心图。",TRUE,3
+"fig_ratio_curve_wikimqa_curve.png","wikimqa curve 比例扫描曲线","Line","wikimqa curve","展示重算比例变化对 query_aware 延迟与质量的影响，并与 full_prefill 基线对照。","最适合解释参数敏感性和效率-质量权衡，是论文中参数分析的核心图。",TRUE,4
+"fig_ratio_heatmap_total_musique.png","musique 总时延热图","Heatmap","musique 所有 ratio 曲线文件","比较同一数据集下不同 ratio 曲线文件在各比例点上的 qaw 总时延分布。","适合快速筛选低时延区间，也能看出不同曲线配置间的一致性。",FALSE,NA
+"fig_ratio_heatmap_f1_musique.png","musique F1 热图","Heatmap","musique 所有 ratio 曲线文件","比较同一数据集下不同 ratio 曲线文件在各比例点上的 qaw 质量分布。","适合寻找相对稳定的高质量区间，与时延热图结合可做参数筛选。",FALSE,NA
+"fig_ratio_heatmap_total_wikimqa.png","wikimqa 总时延热图","Heatmap","wikimqa 所有 ratio 曲线文件","比较同一数据集下不同 ratio 曲线文件在各比例点上的 qaw 总时延分布。","适合快速筛选低时延区间，也能看出不同曲线配置间的一致性。",FALSE,NA
+"fig_ratio_heatmap_f1_wikimqa.png","wikimqa F1 热图","Heatmap","wikimqa 所有 ratio 曲线文件","比较同一数据集下不同 ratio 曲线文件在各比例点上的 qaw 质量分布。","适合寻找相对稳定的高质量区间，与时延热图结合可做参数筛选。",FALSE,NA
+"fig_tradeoff_musique.png","musique 速度-质量权衡图","Scatter Path","musique ratio 曲线","用速度提升和质量保持率同时观察不同比例点的综合收益。","适合论文中解释“最优点不是单看延迟或单看F1，而是看两者平衡”。",TRUE,5
+"fig_tradeoff_wikimqa.png","wikimqa 速度-质量权衡图","Scatter Path","wikimqa ratio 曲线","用速度提升和质量保持率同时观察不同比例点的综合收益。","适合论文中解释“最优点不是单看延迟或单看F1，而是看两者平衡”。",FALSE,NA
+"fig_suffix_curve_0416_suffix_curve_musique_a.png","suffix curve musique a 后缀长度扫描曲线","Line","suffix curve musique a","展示 suffix_len 对 qaw 时延与质量的影响，用于判断尾部强制保留是否有必要。","适合支撑“suffix_len 是稳定性控制参数”的论述。",FALSE,NA
+"fig_suffix_curve_0416_suffix_curve_musique_b.png","suffix curve musique b 后缀长度扫描曲线","Line","suffix curve musique b","展示 suffix_len 对 qaw 时延与质量的影响，用于判断尾部强制保留是否有必要。","适合支撑“suffix_len 是稳定性控制参数”的论述。",FALSE,NA
+"fig_suffix_curve_0416_suffix_curve_wikimqa.png","suffix curve wikimqa 后缀长度扫描曲线","Line","suffix curve wikimqa","展示 suffix_len 对 qaw 时延与质量的影响，用于判断尾部强制保留是否有必要。","适合支撑“suffix_len 是稳定性控制参数”的论述。",FALSE,NA
+"fig_suffix_compare_cross_dataset.png","跨数据集 suffix 对比","Line","仅使用 count 相同、固定 qaw_ratio 相同、suffix 范围相同的可比组","比较 musique 与 wikimqa 在同一 suffix 扫描设置下的时延和质量走势。","满足你的可比性约束，适合放在论文里说明参数对不同任务的影响是否一致。",TRUE,6
+"fig_suffix_tradeoff_cross_dataset.png","跨数据集 suffix 权衡散点图","Scatter Path","跨数据集可比 suffix 组","在相同 suffix 扫描设置下，比较两个数据集的速度-质量平衡曲线。","适合用来解释“参数对不同任务的收益差异”。",FALSE,NA
+"fig_sample_box_total_blend_demo.png","blend_demo 样本级总时延箱线图","Boxplot","blend_demo 非曲线样本级结果","展示不同方法在样本层面的总时延分布，而不是只看平均值。","适合说明方法稳定性和离群样本情况。",FALSE,NA
+"fig_sample_box_total_musique.png","musique 样本级总时延箱线图","Boxplot","musique 非曲线样本级结果","展示不同方法在样本层面的总时延分布，而不是只看平均值。","适合说明方法稳定性和离群样本情况。",FALSE,NA
+"fig_sample_box_f1_musique.png","musique 样本级 F1 箱线图","Boxplot","musique 非曲线样本级结果","比较 full_prefill 和 query_aware 在样本层面的质量分布差异。","适合配合均值结果解释“平均值相近，但样本分布可能不同”。",FALSE,NA
+"fig_sample_delta_scatter_musique.png","musique 样本级增益散点图","Scatter","musique 非曲线样本级结果","横轴是 query_aware 相对 full_prefill 的时延收益，纵轴是质量变化，四象限可直接解释收益与代价。","非常适合论文分析“哪些样本既加速又不降质，哪些样本会退化”。",TRUE,7
+"fig_sample_latency_gain_hist_musique.png","musique 时延收益直方图","Histogram","musique 非曲线样本级结果","观察 query_aware 在样本层面的时延收益分布是否集中。","适合补充说明收益是否普遍存在，还是主要由少数样本驱动。",FALSE,NA
+"fig_sample_recomputed_vs_latency_musique.png","musique 重算 token 数与时延关系图","Scatter","musique 非曲线样本级结果","观察样本层面上重算 token 数量与 query_aware 实际时延之间的关系。","适合支撑“重算规模会影响时延，但不是唯一因素”的分析。",FALSE,NA
+"fig_sample_box_total_wikimqa.png","wikimqa 样本级总时延箱线图","Boxplot","wikimqa 非曲线样本级结果","展示不同方法在样本层面的总时延分布，而不是只看平均值。","适合说明方法稳定性和离群样本情况。",FALSE,NA
+"fig_sample_box_f1_wikimqa.png","wikimqa 样本级 F1 箱线图","Boxplot","wikimqa 非曲线样本级结果","比较 full_prefill 和 query_aware 在样本层面的质量分布差异。","适合配合均值结果解释“平均值相近，但样本分布可能不同”。",FALSE,NA
+"fig_sample_delta_scatter_wikimqa.png","wikimqa 样本级增益散点图","Scatter","wikimqa 非曲线样本级结果","横轴是 query_aware 相对 full_prefill 的时延收益，纵轴是质量变化，四象限可直接解释收益与代价。","非常适合论文分析“哪些样本既加速又不降质，哪些样本会退化”。",FALSE,NA
+"fig_sample_latency_gain_hist_wikimqa.png","wikimqa 时延收益直方图","Histogram","wikimqa 非曲线样本级结果","观察 query_aware 在样本层面的时延收益分布是否集中。","适合补充说明收益是否普遍存在，还是主要由少数样本驱动。",FALSE,NA
+"fig_sample_recomputed_vs_latency_wikimqa.png","wikimqa 重算 token 数与时延关系图","Scatter","wikimqa 非曲线样本级结果","观察样本层面上重算 token 数量与 query_aware 实际时延之间的关系。","适合支撑“重算规模会影响时延，但不是唯一因素”的分析。",FALSE,NA

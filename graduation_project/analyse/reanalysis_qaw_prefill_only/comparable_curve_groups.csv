@@ -1,0 +1,5 @@
+"compare_group","curve_mode","count_for_compare","dataset_count","datasets","files","qaw_ratio_min","qaw_ratio_max","qaw_ratio_step","qaw_ratio_fixed","suffix_len_min","suffix_len_max","suffix_len_step","suffix_len_fixed"
+"ratio|50|0.25|1|0.05|32","ratio_only",50,1,"musique","0416_musique_curve_025_100",0.25,1,0.05,NA,NA,NA,NA,32
+"ratio|50|0.6|1|0.05|32","ratio_only",50,1,"wikimqa","wikimqa_curve",0.6,1,0.05,NA,NA,NA,NA,32
+"ratio|50|0|1|0.05|32","ratio_only",50,1,"musique","0416_blend_curve_default",0,1,0.05,NA,NA,NA,NA,32
+"suffix|50|0.7|0|32|8","suffix_only",50,2,"musique, wikimqa","0416_suffix_curve_musique_a | 0416_suffix_curve_musique_b | 0416_suffix_curve_wikimqa",NA,NA,NA,0.7,0,32,8,NA
