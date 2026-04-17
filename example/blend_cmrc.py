@@ -145,6 +145,10 @@ def warm_prompt_cache(engine: InferenceEngine, kv_cache: KVCacheManager,
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="CMRC 对比实验脚本")
+    parser.add_argument("--model-name",
+                        type=str,
+                        default="",
+                        help="显式指定模型路径/名称；未传时回退 MODEL_NAME")
     parser.add_argument("--count", type=int, default=30, help="最多评测样本数")
     parser.add_argument("--qaw-ratio", type=float, default=0.7, help="query-aware 重算比例")
     parser.add_argument("--output-dir",
@@ -157,6 +161,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     cfg = RuntimeConfig()
+    if args.model_name.strip():
+        cfg.model_name = args.model_name.strip()
     cfg.max_new_tokens = 32
 
     # 按需求：脚本不向终端输出，统一写入 outputs/*.output。
