@@ -122,6 +122,10 @@ def build_stale_prompt(doc_prompts, query_text):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="blend.py 演示脚本")
+    parser.add_argument("--model-name",
+                        type=str,
+                        default="",
+                        help="显式指定模型路径/名称；未传时回退 MODEL_NAME")
     parser.add_argument("--methods",
                         choices=["all", "baselines_only"],
                         default="all",
@@ -132,6 +136,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     cfg = RuntimeConfig()
+    if args.model_name.strip():
+        cfg.model_name = args.model_name.strip()
     cfg.max_new_tokens = 10
     kvd_ratio = 0.16
     kvd_suffix_len = 32

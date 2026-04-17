@@ -146,6 +146,19 @@ DATASET_SPECS: Dict[str, Dict] = {
         ),
         "answer_fn": _default_answers,
     },
+    "cmrc": {
+        "dataset_path": "inputs/cmrc_s.json",
+        "run_tag": "runner_cmrc",
+        "prefix_prompt": (
+            "请基于给定文章直接回答问题，只输出简短答案短语，不要输出额外内容。\n\n"
+            "文章：\n"
+        ),
+        "query_prompt": (
+            "\n\n请基于给定文章直接回答问题，只输出简短答案短语，不要重复问题。"
+            "问题："
+        ),
+        "answer_fn": _default_answers,
+    },
 }
 
 
@@ -200,6 +213,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset",
                         choices=sorted(DATASET_SPECS.keys()),
                         default="musique")
+    parser.add_argument("--model-name",
+                        type=str,
+                        default="",
+                        help="显式指定模型路径/名称；未传时回退 MODEL_NAME")
     parser.add_argument("--count", type=int, default=30, help="最多评测样本数")
     parser.add_argument("--max-new-tokens", type=int, default=32)
     parser.add_argument("--qaw-ratio", type=float, default=0.30)
@@ -213,9 +230,11 @@ def parse_args() -> argparse.Namespace:
                         action="store_true",
                         help="只写 run_summary，不写 sample_result")
     parser.add_argument("--methods",
-                        choices=["all", "baselines_only"],
+                        choices=["all", "baselines_only", "prefill_qaw"],
                         default="all",
-                        help="all: 运行 full_prefill/full_reuse + qaw 变体；baselines_only: 仅运行热启动 baseline")
+                        help=("all: 运行 full_prefill/full_reuse + qaw 变体；"
+                              "baselines_only: 仅运行热启动 baseline；"
+                              "prefill_qaw: 仅运行 full_prefill + qaw_default"))
     return parser.parse_args()
 
 
@@ -225,8 +244,11 @@ def main() -> None:
     answer_fn: Callable = spec["answer_fn"]
 
     cfg = RuntimeConfig()
+    if args.model_name.strip():
+        cfg.model_name = args.model_name.strip()
     cfg.max_new_tokens = args.max_new_tokens
     baseline_only = args.methods == "baselines_only"
+    prefill_qaw_only = args.methods == "prefill_qaw"
     baseline_group_key = _build_baseline_group_key(
         dataset_name=args.dataset,
         count=args.count,
@@ -243,8 +265,12 @@ def main() -> None:
     kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
     engine = InferenceEngine(model_runner, kv_cache, logger)
 
-    run_tag = (f"{spec['run_tag']}_baselines"
-               if baseline_only else spec["run_tag"])
+    if baseline_only:
+        run_tag = f"{spec['run_tag']}_baselines"
+    elif prefill_qaw_only:
+        run_tag = f"{spec['run_tag']}_prefill_qaw"
+    else:
+        run_tag = spec["run_tag"]
     output_writer = ExperimentOutputWriter.create(
         os.path.join(ROOT_DIR, "outputs"), run_tag=run_tag)
     output_writer.append_json({
@@ -260,6 +286,7 @@ def main() -> None:
         "top_p": cfg.top_p,
         "methods": args.methods,
         "baseline_only": baseline_only,
+        "prefill_qaw_only": prefill_qaw_only,
         "baseline_mode": "standalone_hot" if baseline_only else "native",
         "baseline_group_key": baseline_group_key,
         "warmup_applied": True,
@@ -268,7 +295,9 @@ def main() -> None:
         "max_prompt_tokens": args.max_prompt_tokens,
         "suffix_len": args.suffix_len,
         "qaw_random_seed": args.qaw_random_seed,
-        "qaw_variants_enabled": ["default", "no_suffix", "random_topk"],
+        "qaw_variants_enabled": (
+            ["default"] if prefill_qaw_only else ["default", "no_suffix", "random_topk"]
+        ),
     })
 
     dataset_path = os.path.join(ROOT_DIR, spec["dataset_path"])
@@ -282,13 +311,14 @@ def main() -> None:
             "f1": [],
             "true_recompute": 0
         },
-        "full_reuse": {
+    }
+    if not prefill_qaw_only:
+        metrics["full_reuse"] = {
             "ttft": [],
             "total": [],
             "f1": [],
             "true_recompute": 0
-        },
-    }
+        }
     if not baseline_only:
         metrics.update({
             "qaw_default": {
@@ -297,25 +327,29 @@ def main() -> None:
                 "f1": [],
                 "true_recompute": 0
             },
-            "qaw_no_suffix": {
-                "ttft": [],
-                "total": [],
-                "f1": [],
-                "true_recompute": 0
-            },
-            "qaw_random_topk": {
-                "ttft": [],
-                "total": [],
-                "f1": [],
-                "true_recompute": 0
-            },
         })
+        if not prefill_qaw_only:
+            metrics.update({
+                "qaw_no_suffix": {
+                    "ttft": [],
+                    "total": [],
+                    "f1": [],
+                    "true_recompute": 0
+                },
+                "qaw_random_topk": {
+                    "ttft": [],
+                    "total": [],
+                    "f1": [],
+                    "true_recompute": 0
+                },
+            })
 
-    qaw_variant_cfgs = [
-        ("qaw_default", "default", args.suffix_len, 0),
-        ("qaw_no_suffix", "no_suffix", 0, 0),
-        ("qaw_random_topk", "random_topk", args.suffix_len, args.qaw_random_seed),
-    ]
+    qaw_variant_cfgs = [("qaw_default", "default", args.suffix_len, 0)]
+    if not prefill_qaw_only:
+        qaw_variant_cfgs.extend([
+            ("qaw_no_suffix", "no_suffix", 0, 0),
+            ("qaw_random_topk", "random_topk", args.suffix_len, args.qaw_random_seed),
+        ])
 
     selected_samples = []
     sample_payloads: Dict[int, Dict] = {}
@@ -373,21 +407,22 @@ def main() -> None:
             )
             engine.generate(warmup_prefill_req)
 
-            stage = "baseline_warmup_reuse"
-            reuse_template_id = f"{args.dataset}-baseline-warmup-reuse-template-{warmup_idx}"
-            warm_prompt_cache(engine, kv_cache, reuse_template_id, warmup_prompt)
-            reuse_session_id = f"{args.dataset}-baseline-warmup-reuse-{warmup_idx}"
-            seed_session_cache(kv_cache, reuse_template_id, reuse_session_id)
-            warmup_reuse_req = GenerateRequest(
-                session_id=reuse_session_id,
-                prompt=warmup_prompt,
-                max_new_tokens=1,
-                temperature=cfg.temperature,
-                top_p=cfg.top_p,
-                use_cache=True,
-                recompute_strategy="none",
-            )
-            engine.generate(warmup_reuse_req)
+            if not prefill_qaw_only:
+                stage = "baseline_warmup_reuse"
+                reuse_template_id = f"{args.dataset}-baseline-warmup-reuse-template-{warmup_idx}"
+                warm_prompt_cache(engine, kv_cache, reuse_template_id, warmup_prompt)
+                reuse_session_id = f"{args.dataset}-baseline-warmup-reuse-{warmup_idx}"
+                seed_session_cache(kv_cache, reuse_template_id, reuse_session_id)
+                warmup_reuse_req = GenerateRequest(
+                    session_id=reuse_session_id,
+                    prompt=warmup_prompt,
+                    max_new_tokens=1,
+                    temperature=cfg.temperature,
+                    top_p=cfg.top_p,
+                    use_cache=True,
+                    recompute_strategy="none",
+                )
+                engine.generate(warmup_reuse_req)
         except torch.OutOfMemoryError:
             skipped_oom_count += 1
             output_writer.append_json({
@@ -417,32 +452,32 @@ def main() -> None:
             )
             base_res = engine.generate(base_req)
 
-            stage = "baseline_full_reuse"
-            reuse_template_id = f"{args.dataset}-baseline-pass-reuse-template-{sample_idx}"
-            warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
-            reuse_session_id = f"{args.dataset}-baseline-pass-reuse-{sample_idx}"
-            seed_session_cache(kv_cache, reuse_template_id, reuse_session_id)
-            reuse_req = GenerateRequest(
-                session_id=reuse_session_id,
-                prompt=final_prompt,
-                max_new_tokens=cfg.max_new_tokens,
-                temperature=cfg.temperature,
-                top_p=cfg.top_p,
-                use_cache=True,
-                recompute_strategy="none",
-            )
-            reuse_res = engine.generate(reuse_req)
-
             base_f1 = _safe_max_f1(base_res.generated_text, answers,
                                    model_runner.tokenizer)
-            reuse_f1 = _safe_max_f1(reuse_res.generated_text, answers,
-                                    model_runner.tokenizer)
             baseline_results[sample_idx] = {
                 "base_res": base_res,
-                "reuse_res": reuse_res,
                 "base_f1": base_f1,
-                "reuse_f1": reuse_f1,
             }
+            if not prefill_qaw_only:
+                stage = "baseline_full_reuse"
+                reuse_template_id = f"{args.dataset}-baseline-pass-reuse-template-{sample_idx}"
+                warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
+                reuse_session_id = f"{args.dataset}-baseline-pass-reuse-{sample_idx}"
+                seed_session_cache(kv_cache, reuse_template_id, reuse_session_id)
+                reuse_req = GenerateRequest(
+                    session_id=reuse_session_id,
+                    prompt=final_prompt,
+                    max_new_tokens=cfg.max_new_tokens,
+                    temperature=cfg.temperature,
+                    top_p=cfg.top_p,
+                    use_cache=True,
+                    recompute_strategy="none",
+                )
+                reuse_res = engine.generate(reuse_req)
+                reuse_f1 = _safe_max_f1(reuse_res.generated_text, answers,
+                                        model_runner.tokenizer)
+                baseline_results[sample_idx]["reuse_res"] = reuse_res
+                baseline_results[sample_idx]["reuse_f1"] = reuse_f1
         except torch.OutOfMemoryError:
             skipped_oom_count += 1
             output_writer.append_json({
@@ -505,23 +540,24 @@ def main() -> None:
         try:
             baseline = baseline_results[sample_idx]
             base_res = baseline["base_res"]
-            reuse_res = baseline["reuse_res"]
             base_f1 = baseline["base_f1"]
-            reuse_f1 = baseline["reuse_f1"]
+            reuse_res = baseline.get("reuse_res")
+            reuse_f1 = baseline.get("reuse_f1")
 
             metrics["full_prefill"]["ttft"].append(base_res.first_token_latency_s)
             metrics["full_prefill"]["total"].append(base_res.total_latency_s)
             if base_f1 is not None:
                 metrics["full_prefill"]["f1"].append(base_f1)
 
-            metrics["full_reuse"]["ttft"].append(reuse_res.first_token_latency_s)
-            metrics["full_reuse"]["total"].append(reuse_res.total_latency_s)
-            if reuse_f1 is not None:
-                metrics["full_reuse"]["f1"].append(reuse_f1)
+            if not prefill_qaw_only and reuse_res is not None:
+                metrics["full_reuse"]["ttft"].append(reuse_res.first_token_latency_s)
+                metrics["full_reuse"]["total"].append(reuse_res.total_latency_s)
+                if reuse_f1 is not None:
+                    metrics["full_reuse"]["f1"].append(reuse_f1)
 
             if baseline_only:
                 if not args.summary_only:
-                    output_writer.append_json({
+                    sample_payload = {
                         "event": "sample_result",
                         "sample_idx": sample_idx,
                         "question": ex.get("question", ""),
@@ -535,14 +571,16 @@ def main() -> None:
                             "total_s": base_res.total_latency_s,
                             "f1": base_f1,
                         },
-                        "full_reuse": {
+                    }
+                    if reuse_res is not None:
+                        sample_payload["full_reuse"] = {
                             "generated_text": reuse_res.generated_text,
                             "ttft_s": reuse_res.first_token_latency_s,
                             "total_s": reuse_res.total_latency_s,
                             "reused_prefix_tokens": reuse_res.reused_prefix_tokens,
                             "f1": reuse_f1,
-                        },
-                    })
+                        }
+                    output_writer.append_json(sample_payload)
                 continue
 
             stage = "qaw_stale_cache_warm"
@@ -596,7 +634,7 @@ def main() -> None:
                 }
 
             if not args.summary_only:
-                output_writer.append_json({
+                sample_payload = {
                     "event": "sample_result",
                     "sample_idx": sample_idx,
                     "question": ex.get("question", ""),
@@ -611,15 +649,17 @@ def main() -> None:
                         "total_s": base_res.total_latency_s,
                         "f1": base_f1,
                     },
-                    "full_reuse": {
+                    "qaw_variants": sample_qaw_payload,
+                }
+                if not prefill_qaw_only and reuse_res is not None:
+                    sample_payload["full_reuse"] = {
                         "generated_text": reuse_res.generated_text,
                         "ttft_s": reuse_res.first_token_latency_s,
                         "total_s": reuse_res.total_latency_s,
                         "reused_prefix_tokens": reuse_res.reused_prefix_tokens,
                         "f1": reuse_f1,
-                    },
-                    "qaw_variants": sample_qaw_payload,
-                })
+                    }
+                output_writer.append_json(sample_payload)
         except torch.OutOfMemoryError:
             skipped_oom_count += 1
             output_writer.append_json({
@@ -635,14 +675,18 @@ def main() -> None:
         "event": "run_summary",
         "sample_count": len(metrics["full_prefill"]["ttft"]),
         "baseline_only": baseline_only,
+        "prefill_qaw_only": prefill_qaw_only,
         "baseline_mode": "standalone_hot" if baseline_only else "native",
         "baseline_group_key": baseline_group_key,
         "full_prefill_avg_ttft_s": _mean(metrics["full_prefill"]["ttft"]),
-        "full_reuse_avg_ttft_s": _mean(metrics["full_reuse"]["ttft"]),
+        "full_reuse_avg_ttft_s": _mean(metrics["full_reuse"]["ttft"])
+        if "full_reuse" in metrics else None,
         "full_prefill_avg_total_s": _mean(metrics["full_prefill"]["total"]),
-        "full_reuse_avg_total_s": _mean(metrics["full_reuse"]["total"]),
+        "full_reuse_avg_total_s": _mean(metrics["full_reuse"]["total"])
+        if "full_reuse" in metrics else None,
         "full_prefill_avg_f1": _mean(metrics["full_prefill"]["f1"]),
-        "full_reuse_avg_f1": _mean(metrics["full_reuse"]["f1"]),
+        "full_reuse_avg_f1": _mean(metrics["full_reuse"]["f1"])
+        if "full_reuse" in metrics else None,
         "skipped_oom_count": skipped_oom_count,
         "skipped_long_prompt_count": skipped_long_prompt_count,
         "ended_at": utc8_now_str(),
@@ -650,18 +694,25 @@ def main() -> None:
     if not baseline_only:
         summary_payload.update({
             "qaw_default_avg_ttft_s": _mean(metrics["qaw_default"]["ttft"]),
-            "qaw_no_suffix_avg_ttft_s": _mean(metrics["qaw_no_suffix"]["ttft"]),
-            "qaw_random_topk_avg_ttft_s": _mean(metrics["qaw_random_topk"]["ttft"]),
             "qaw_default_avg_total_s": _mean(metrics["qaw_default"]["total"]),
-            "qaw_no_suffix_avg_total_s": _mean(metrics["qaw_no_suffix"]["total"]),
-            "qaw_random_topk_avg_total_s": _mean(metrics["qaw_random_topk"]["total"]),
             "qaw_default_avg_f1": _mean(metrics["qaw_default"]["f1"]),
-            "qaw_no_suffix_avg_f1": _mean(metrics["qaw_no_suffix"]["f1"]),
-            "qaw_random_topk_avg_f1": _mean(metrics["qaw_random_topk"]["f1"]),
             "qaw_default_true_recompute_count": metrics["qaw_default"]["true_recompute"],
-            "qaw_no_suffix_true_recompute_count": metrics["qaw_no_suffix"]["true_recompute"],
+            "qaw_no_suffix_avg_ttft_s": _mean(metrics["qaw_no_suffix"]["ttft"])
+            if "qaw_no_suffix" in metrics else None,
+            "qaw_random_topk_avg_ttft_s": _mean(metrics["qaw_random_topk"]["ttft"])
+            if "qaw_random_topk" in metrics else None,
+            "qaw_no_suffix_avg_total_s": _mean(metrics["qaw_no_suffix"]["total"])
+            if "qaw_no_suffix" in metrics else None,
+            "qaw_random_topk_avg_total_s": _mean(metrics["qaw_random_topk"]["total"])
+            if "qaw_random_topk" in metrics else None,
+            "qaw_no_suffix_avg_f1": _mean(metrics["qaw_no_suffix"]["f1"])
+            if "qaw_no_suffix" in metrics else None,
+            "qaw_random_topk_avg_f1": _mean(metrics["qaw_random_topk"]["f1"])
+            if "qaw_random_topk" in metrics else None,
+            "qaw_no_suffix_true_recompute_count":
+            metrics["qaw_no_suffix"]["true_recompute"] if "qaw_no_suffix" in metrics else None,
             "qaw_random_topk_true_recompute_count":
-            metrics["qaw_random_topk"]["true_recompute"],
+            metrics["qaw_random_topk"]["true_recompute"] if "qaw_random_topk" in metrics else None,
         })
     output_writer.append_json(summary_payload)
 
