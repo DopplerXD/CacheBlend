@@ -28,6 +28,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset",
                         choices=sorted(DATASET_SPECS.keys()),
                         default="musique")
+    parser.add_argument("--model-name",
+                        type=str,
+                        default="",
+                        help="显式指定模型路径/名称；未传时回退 MODEL_NAME")
     parser.add_argument("--count", type=int, default=50, help="最多评测样本数")
     parser.add_argument("--qaw-ratio-min", type=float, default=0.45)
     parser.add_argument("--qaw-ratio-max", type=float, default=0.80)
@@ -52,6 +56,8 @@ def main() -> None:
     spec, eval_dataset = load_dataset(args.dataset)
 
     cfg = RuntimeConfig()
+    if args.model_name.strip():
+        cfg.model_name = args.model_name.strip()
     cfg.max_new_tokens = args.max_new_tokens
 
     logger = setup_logger(f"blend_ratio_suffix_curve_{args.dataset}", cfg.log_level)

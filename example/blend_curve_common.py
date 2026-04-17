@@ -89,6 +89,22 @@ DATASET_SPECS: Dict[str, Dict] = {
         "suffix_curve_tag": "wikimqa_suffix_curve",
         "grid_curve_tag": "wikimqa_ratio_suffix_curve",
     },
+    "cmrc": {
+        "dataset_path": "inputs/cmrc_s.json",
+        "prefix_prompt": (
+            "请基于给定文章直接回答问题，只输出简短答案短语，不要输出额外内容。\n\n"
+            "文章：\n"
+        ),
+        "query_prompt": (
+            "\n\n请基于给定文章直接回答问题，只输出简短答案短语，不要重复问题。"
+            "问题："
+        ),
+        "answer_fn": _default_answers,
+        "ratio_curve_tag": "cmrc_curve",
+        "suffix_curve_tag": "cmrc_suffix_curve",
+        "grid_curve_tag": "cmrc_ratio_suffix_curve",
+        "prefill_only_baseline": True,
+    },
 }
 
 
@@ -234,14 +250,15 @@ def run_fixed_baselines(
     kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
     engine = InferenceEngine(model_runner, kv_cache, logger)
 
-    reuse_ttft_list: List[float] = []
     base_ttft_list: List[float] = []
-    reuse_total_list: List[float] = []
     base_total_list: List[float] = []
-    reuse_f1_list: List[float] = []
     base_f1_list: List[float] = []
 
     answer_fn = spec["answer_fn"]
+    prefill_only_baseline = bool(spec.get("prefill_only_baseline", False))
+    reuse_ttft_list: List[float] = []
+    reuse_total_list: List[float] = []
+    reuse_f1_list: List[float] = []
     count = 0
     try:
         for sample_idx, ex in enumerate(eval_dataset, start=1):
@@ -265,46 +282,47 @@ def run_fixed_baselines(
             )
             base_res = engine.generate(base_req)
 
-            reuse_template_id = f"baseline-reuse-template-{sample_idx}"
-            warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
-            reuse_session_id = f"baseline-reuse-{sample_idx}"
-            seed_session_cache(kv_cache, reuse_template_id, reuse_session_id)
-            reuse_req = GenerateRequest(
-                session_id=reuse_session_id,
-                prompt=final_prompt,
-                max_new_tokens=cfg.max_new_tokens,
-                temperature=cfg.temperature,
-                top_p=cfg.top_p,
-                use_cache=True,
-                recompute_strategy="none",
-            )
-            reuse_res = engine.generate(reuse_req)
-
-            reuse_ttft_list.append(reuse_res.first_token_latency_s)
             base_ttft_list.append(base_res.first_token_latency_s)
-            reuse_total_list.append(reuse_res.total_latency_s)
             base_total_list.append(base_res.total_latency_s)
 
-            reuse_f1 = safe_max_f1(reuse_res.generated_text, answers,
-                                   model_runner.tokenizer)
             base_f1 = safe_max_f1(base_res.generated_text, answers,
                                   model_runner.tokenizer)
-            if reuse_f1 is not None:
-                reuse_f1_list.append(reuse_f1)
             if base_f1 is not None:
                 base_f1_list.append(base_f1)
+            if not prefill_only_baseline:
+                reuse_template_id = f"baseline-reuse-template-{sample_idx}"
+                warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
+                reuse_session_id = f"baseline-reuse-{sample_idx}"
+                seed_session_cache(kv_cache, reuse_template_id, reuse_session_id)
+                reuse_req = GenerateRequest(
+                    session_id=reuse_session_id,
+                    prompt=final_prompt,
+                    max_new_tokens=cfg.max_new_tokens,
+                    temperature=cfg.temperature,
+                    top_p=cfg.top_p,
+                    use_cache=True,
+                    recompute_strategy="none",
+                )
+                reuse_res = engine.generate(reuse_req)
+                reuse_ttft_list.append(reuse_res.first_token_latency_s)
+                reuse_total_list.append(reuse_res.total_latency_s)
+
+                reuse_f1 = safe_max_f1(reuse_res.generated_text, answers,
+                                       model_runner.tokenizer)
+                if reuse_f1 is not None:
+                    reuse_f1_list.append(reuse_f1)
     finally:
         cleanup_runtime(kv_cache, engine)
 
     return {
         "sample_count": count,
-        "full_reuse_avg_ttft_s": mean(reuse_ttft_list),
+        "full_reuse_avg_ttft_s": None if prefill_only_baseline else mean(reuse_ttft_list),
         "kv_diff_avg_ttft_s": None,
         "full_prefill_avg_ttft_s": mean(base_ttft_list),
-        "full_reuse_avg_total_s": mean(reuse_total_list),
+        "full_reuse_avg_total_s": None if prefill_only_baseline else mean(reuse_total_list),
         "kv_diff_avg_total_s": None,
         "full_prefill_avg_total_s": mean(base_total_list),
-        "full_reuse_avg_f1": mean(reuse_f1_list),
+        "full_reuse_avg_f1": None if prefill_only_baseline else mean(reuse_f1_list),
         "kv_diff_avg_f1": None,
         "full_prefill_avg_f1": mean(base_f1_list),
         "kvd_true_recompute_count": 0,

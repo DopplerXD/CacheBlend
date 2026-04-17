@@ -22,19 +22,21 @@ from utils.logging_utils import setup_logger
 from blend_curve_common import DATASET_SPECS, build_run_summary_payload, evaluate_qaw_grid, float_grid, load_dataset, run_fixed_baselines
 
 
-FIXED_SUFFIX_LEN = 32
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="QAW ratio curve（固定 suffix_len=32）")
     parser.add_argument("--dataset",
                         choices=sorted(DATASET_SPECS.keys()),
                         default="musique")
+    parser.add_argument("--model-name",
+                        type=str,
+                        default="",
+                        help="显式指定模型路径/名称；未传时回退 MODEL_NAME")
     parser.add_argument("--count", type=int, default=50, help="最多评测样本数")
     parser.add_argument("--qaw-ratio-min", type=float, default=0.0)
     parser.add_argument("--qaw-ratio-max", type=float, default=1.0)
     parser.add_argument("--qaw-ratio-step", type=float, default=0.05)
+    parser.add_argument("--suffix-len", type=int, default=32)
     parser.add_argument("--max-new-tokens", type=int, default=32)
     parser.add_argument("--output-dir",
                         type=str,
@@ -52,6 +54,8 @@ def main() -> None:
     spec, eval_dataset = load_dataset(args.dataset)
 
     cfg = RuntimeConfig()
+    if args.model_name.strip():
+        cfg.model_name = args.model_name.strip()
     cfg.max_new_tokens = args.max_new_tokens
 
     logger = setup_logger(f"blend_curve_{args.dataset}", cfg.log_level)
@@ -79,7 +83,7 @@ def main() -> None:
         "qaw_ratio_min": args.qaw_ratio_min,
         "qaw_ratio_max": args.qaw_ratio_max,
         "qaw_ratio_step": args.qaw_ratio_step,
-        "suffix_len": FIXED_SUFFIX_LEN,
+        "suffix_len": args.suffix_len,
         "ratio_group_count": len(ratios),
         "curve_mode": "ratio_only",
         "kvd_enabled": False,
@@ -103,7 +107,7 @@ def main() -> None:
         logger=logger,
         sample_limit=sample_limit,
         ratio_values=ratios,
-        suffix_values=[FIXED_SUFFIX_LEN],
+        suffix_values=[args.suffix_len],
     )
 
     total_groups = len(ratios)
@@ -111,16 +115,16 @@ def main() -> None:
         payload = build_run_summary_payload(
             processed_samples=processed_samples,
             baseline_stats=baseline_stats,
-            grid_bucket=metrics[(recomp_ratio, FIXED_SUFFIX_LEN)],
+            grid_bucket=metrics[(recomp_ratio, args.suffix_len)],
             recomp_ratio=recomp_ratio,
-            suffix_len=FIXED_SUFFIX_LEN,
+            suffix_len=args.suffix_len,
         )
         payload["ended_at"] = utc8_now_str()
         output_writer.append_json(payload)
         print(
             f"[curve] 组完成 {group_idx}/{total_groups}, "
             f"run_summary 已写入, recomp_ratio={recomp_ratio:.2f}, "
-            f"suffix_len={FIXED_SUFFIX_LEN}",
+            f"suffix_len={args.suffix_len}",
             flush=True,
         )
 
