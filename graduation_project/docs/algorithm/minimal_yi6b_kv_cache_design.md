@@ -1,8 +1,8 @@
-# 不依赖 vLLM/PagedAttention 的 Yi-6B + Transformer 最小化 KV 缓存方案设计
+# 不依赖 vLLM/PagedAttention 的 HF Causal LM + Transformer 最小化 KV 缓存方案设计
 
 ## 1. 目标与边界
 ### 1.1 目标
-基于 `transformers + Yi-6B` 自行实现一个“仅内存 KV 缓存”的最小推理系统，支持：
+基于 `transformers + HF causal LM` 自行实现一个“仅内存 KV 缓存”的最小推理系统，支持：
 1. 单机单卡（先不做分布式）
 2. prefill + decode 两阶段推理
 3. 会话级 KV 缓存复用（同一会话连续问答）
@@ -26,7 +26,7 @@ minimal_yi_kv/
   app.py                    # CLI/服务入口
   config.py                 # 模型与运行参数
   model/
-    yi_model.py             # 封装 transformers Yi-6B 加载与 forward
+    hf_model.py             # 封装 transformers causal LM 加载与 forward
   cache/
     kv_cache.py             # KV 数据结构与读写管理（核心）
   engine/
@@ -44,7 +44,7 @@ minimal_yi_kv/
 
 ## 3. 核心模块设计
 
-## 3.1 `model/yi_model.py`
+## 3.1 `model/hf_model.py`
 职责：
 1. 加载 `AutoTokenizer` 与 `AutoModelForCausalLM`
 2. 暴露 `forward(input_ids, attention_mask, past_key_values=None, use_cache=True)`
@@ -138,7 +138,7 @@ minimal_yi_kv/
 
 ### 7.1 MVP（可跑通、可复用会话 KV）
 1. 基础骨架与配置：0.5 天
-2. Yi-6B 模型封装：0.5 天
+2. HF causal LM 模型封装：0.5 天
 3. KV 管理器（内存 + TTL/LRU）：1.0 天
 4. 主链路（prefill/decode + session）：1.0 天
 5. CLI/简单 API 与日志：0.5 天
@@ -162,7 +162,7 @@ minimal_yi_kv/
 ---
 
 ## 8. 风险与注意事项
-1. Yi-6B 不同仓库版本在 `past_key_values` 结构上可能有差异，需要先做一次兼容验证。
+1. 不同 HF causal LM 在 `past_key_values` 结构上可能有差异，需要先做一次兼容验证。
 2. 长上下文会让会话 KV 快速膨胀，必须做配额与淘汰策略。
 3. 如果后续要并发，需考虑会话锁与 CUDA stream 竞争。
 4. 不使用 PagedAttention 时，大 prompt 下延迟会明显上升。

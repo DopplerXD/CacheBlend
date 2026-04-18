@@ -2,7 +2,7 @@
 
 ## 1. 文档目的
 
-本文档描述当前仓库中“纯 Transformers + Yi-6B”版本的 Query-aware 选择性重算实现原理，覆盖：
+本文档描述当前仓库中“纯 Transformers + HF causal LM”版本的 Query-aware 选择性重算实现原理，覆盖：
 
 - 触发条件与主链路
 - 分数计算与 token 选择逻辑
@@ -14,7 +14,7 @@
 对应核心代码：
 
 - `engine/inference_engine.py`
-- `model/yi_model.py`
+- `model/hf_model.py`
 - `cache/kv_cache.py`
 - `schema/types.py`
 
@@ -269,4 +269,3 @@ score_i = \max_j \; \cos(e_i, q_j)
 - forced suffix：尾部强制重算区段
 - packed prefill：仅对 selected token 进行一次打包前向
 - scatter fusion：将 packed KV 按原索引写回完整 KV
-

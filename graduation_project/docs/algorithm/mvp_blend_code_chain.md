@@ -7,7 +7,7 @@
 
 1. 加载配置 `RuntimeConfig`（`config.py`）
 2. 初始化日志（`utils/logging_utils.py`）
-3. 加载模型封装 `YiModelRunner`（`model/yi_model.py`）
+3. 加载模型封装 `HFModelRunner`（`model/hf_model.py`）
 4. 初始化 KV 缓存管理器 `KVCacheManager`（`cache/kv_cache.py`）
 5. 组装推理引擎 `InferenceEngine`（`engine/inference_engine.py`）
 
@@ -87,7 +87,7 @@
 1. `tokenizer.encode(prompt)` 得到 `prompt_token_ids`
 2. 若 `use_cache=True`，尝试从 `KVCacheManager.get(session_id)` 读取会话 KV
 3. 前缀命中则增量 prefill；否则全量 prefill
-4. 调 `YiModelRunner.forward_tokens(...)` 执行 prefill
+4. 调 `HFModelRunner.forward_tokens(...)` 执行 prefill
 5. decode 循环：
    - 取最后 logits 采样下一个 token
    - 以 `next_token + past_key_values` 继续前向
