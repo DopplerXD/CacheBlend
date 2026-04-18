@@ -1,4 +1,4 @@
-"""Yi-6B 模型封装（基于 HuggingFace Transformers）。"""
+"""通用 HuggingFace causal LM 模型封装。"""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def _resolve_dtype(dtype_name: str) -> torch.dtype:
     return torch.bfloat16
 
 
-class YiModelRunner:
+class HFModelRunner:
     """对外提供 token 编解码与前向推理接口。"""
 
     def __init__(self, model_name: str, device: str, model_dtype: str, logger):

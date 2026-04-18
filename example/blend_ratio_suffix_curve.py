@@ -15,7 +15,7 @@ if EXAMPLE_DIR not in sys.path:
     sys.path.insert(0, EXAMPLE_DIR)
 
 from config import RuntimeConfig
-from model.yi_model import YiModelRunner
+from model.hf_model import HFModelRunner
 from utils.experiment_output import ExperimentOutputWriter, utc8_now_str
 from utils.logging_utils import setup_logger
 
@@ -63,7 +63,7 @@ def main() -> None:
     logger = setup_logger(f"blend_ratio_suffix_curve_{args.dataset}", cfg.log_level)
     logger.disabled = True
 
-    model_runner = YiModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
+    model_runner = HFModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
                                  logger)
     run_tag = args.run_tag or spec["grid_curve_tag"]
     output_writer = ExperimentOutputWriter.create(

@@ -1,8 +1,8 @@
-# CacheBlend MVP（Transformers + Yi-6B + 内存KV缓存）
+# CacheBlend MVP（Transformers + HF Causal LM + 内存KV缓存）
 
 本分支已移除 `vLLM/PagedAttention` 相关实现，目标是先跑通一个最小可用版本：
 
-1. 基于 `transformers` 加载 `Yi-6B`
+1. 基于 `transformers` 加载本地 HF causal LM
 2. 自实现会话级 KV 缓存（内存 + LRU + TTL）
 3. 支持 prefill/decode 主链路
 4. 预留后续 `query-aware token selection recompute` 扩展位
@@ -12,7 +12,7 @@
 ```text
 app.py                      # 单次请求 CLI 入口
 config.py                   # 运行配置
-model/yi_model.py           # 模型封装
+model/hf_model.py           # 模型封装
 cache/kv_cache.py           # 简单 LRU KV 缓存
 engine/inference_engine.py  # 主链路引擎
 schema/types.py             # 请求/响应结构

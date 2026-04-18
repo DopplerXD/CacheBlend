@@ -22,7 +22,7 @@ if EXAMPLE_DIR not in sys.path:
 from cache.kv_cache import KVCacheManager
 from config import RuntimeConfig
 from engine.inference_engine import InferenceEngine
-from model.yi_model import YiModelRunner
+from model.hf_model import HFModelRunner
 from schema.types import GenerateRequest
 
 _EXAMPLE_UTILS_PATH = os.path.join(EXAMPLE_DIR, "utils.py")
@@ -242,7 +242,7 @@ def run_fixed_baselines(
     eval_dataset: List[Dict],
     spec: Dict,
     cfg: RuntimeConfig,
-    model_runner: YiModelRunner,
+    model_runner: HFModelRunner,
     logger,
     sample_limit: int,
 ) -> Dict[str, Optional[float]]:
@@ -333,7 +333,7 @@ def evaluate_qaw_grid(
     eval_dataset: List[Dict],
     spec: Dict,
     cfg: RuntimeConfig,
-    model_runner: YiModelRunner,
+    model_runner: HFModelRunner,
     logger,
     sample_limit: int,
     ratio_values: List[float],

@@ -45,7 +45,7 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 from config import RuntimeConfig
-from model.yi_model import YiModelRunner
+from model.hf_model import HFModelRunner
 from utils.logging_utils import setup_logger
 
 EXAMPLE_UTILS_PATH = os.path.join(ROOT_DIR, "example", "utils.py")
@@ -212,7 +212,7 @@ def decode_token_labels(tokenizer, token_ids: Sequence[int]) -> List[str]:
 
 
 def compute_query_aware_scores(
-    model_runner: YiModelRunner,
+    model_runner: HFModelRunner,
     prompt_token_ids: List[int],
     query_token_ids: List[int],
     overlap_len: int,
@@ -256,7 +256,7 @@ def select_token_indices(
 
 
 def prepare_visualization_bundle(
-    model_runner: YiModelRunner,
+    model_runner: HFModelRunner,
     dataset_name: str,
     sample_idx: int,
     recomp_ratio: float,
@@ -318,7 +318,7 @@ def make_output_prefix(bundle: VisualizationBundle, output_dir: str) -> str:
 
 
 def plot_similarity_heatmap(
-    model_runner: YiModelRunner,
+    model_runner: HFModelRunner,
     bundle: VisualizationBundle,
     output_prefix: str,
     heatmap_topk: int,
@@ -368,7 +368,7 @@ def plot_similarity_heatmap(
 
 
 def plot_score_and_mask(
-    model_runner: YiModelRunner,
+    model_runner: HFModelRunner,
     bundle: VisualizationBundle,
     output_prefix: str,
     score_topk_labels: int,
@@ -438,7 +438,7 @@ def _normalize_for_color(values: Sequence[float]) -> List[Tuple[float, float, fl
 
 
 def plot_annotated_text(
-    model_runner: YiModelRunner,
+    model_runner: HFModelRunner,
     bundle: VisualizationBundle,
     output_prefix: str,
     text_window: int,
@@ -505,7 +505,7 @@ def plot_annotated_text(
 
 
 def plot_attention_heatmap(
-    model_runner: YiModelRunner,
+    model_runner: HFModelRunner,
     bundle: VisualizationBundle,
     output_prefix: str,
     attention_layer: int,
@@ -587,7 +587,7 @@ def main() -> None:
 
     logger = setup_logger("qaw_visualize", cfg.log_level)
     logger.disabled = True
-    model_runner = YiModelRunner(cfg.model_name, cfg.device, cfg.model_dtype, logger)
+    model_runner = HFModelRunner(cfg.model_name, cfg.device, cfg.model_dtype, logger)
 
     bundle = prepare_visualization_bundle(
         model_runner=model_runner,

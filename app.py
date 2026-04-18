@@ -5,14 +5,14 @@ import argparse
 from cache.kv_cache import KVCacheManager
 from config import RuntimeConfig
 from engine.inference_engine import InferenceEngine
-from model.yi_model import YiModelRunner
+from model.hf_model import HFModelRunner
 from schema.types import GenerateRequest
 from utils.logging_utils import setup_logger
 
 
 def build_engine(cfg: RuntimeConfig):
     logger = setup_logger("app", cfg.log_level)
-    model_runner = YiModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
+    model_runner = HFModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
                                  logger)
     kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
     engine = InferenceEngine(model_runner, kv_cache, logger)
@@ -20,7 +20,7 @@ def build_engine(cfg: RuntimeConfig):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Yi-6B KV Cache MVP")
+    parser = argparse.ArgumentParser(description="HF Causal LM KV Cache MVP")
     parser.add_argument("--prompt", type=str, required=True)
     parser.add_argument("--session-id", type=str, default="demo-session")
     parser.add_argument("--max-new-tokens", type=int, default=None)

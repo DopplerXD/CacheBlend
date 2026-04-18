@@ -1,4 +1,4 @@
-"""MusiQue 实验脚本：三种策略对比（仅落盘日志，不向终端输出）。"""
+"""MusiQue 实验脚本：比较 full_prefill、full_reuse、query_aware 三种路径。"""
 
 import argparse
 import json
@@ -18,7 +18,7 @@ if EXAMPLE_DIR not in sys.path:
 from cache.kv_cache import KVCacheManager
 from config import RuntimeConfig
 from engine.inference_engine import InferenceEngine
-from model.yi_model import YiModelRunner
+from model.hf_model import HFModelRunner
 from schema.types import GenerateRequest
 from utils.experiment_output import ExperimentOutputWriter, utc8_now_str
 from utils.logging_utils import setup_logger
@@ -94,7 +94,7 @@ def warm_chunk_checkpoints(engine: InferenceEngine, kv_cache: KVCacheManager,
     return checkpoint_ids
 
 
-def select_best_checkpoint(kv_cache: KVCacheManager, model_runner: YiModelRunner,
+def select_best_checkpoint(kv_cache: KVCacheManager, model_runner: HFModelRunner,
                            checkpoint_ids: List[str],
                            target_prompt: str) -> Tuple[Optional[str], int]:
     """从 checkpoints 中选最长前缀匹配项。"""
@@ -165,7 +165,7 @@ def main() -> None:
     logger = setup_logger("blend_musique", cfg.log_level)
     logger.disabled = True
 
-    model_runner = YiModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
+    model_runner = HFModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
                                  logger)
     kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
     engine = InferenceEngine(model_runner, kv_cache, logger)
@@ -188,21 +188,21 @@ def main() -> None:
     with open(dataset_path, "r", encoding="utf-8") as f:
         eval_dataset = json.load(f)
 
-    kvd_ttft_list: List[float] = []
     qaw_ttft_list: List[float] = []
     base_ttft_list: List[float] = []
     reuse_ttft_list: List[float] = []
-    kvd_total_list: List[float] = []
     qaw_total_list: List[float] = []
     base_total_list: List[float] = []
     reuse_total_list: List[float] = []
-    kvd_f1_list: List[float] = []
     qaw_f1_list: List[float] = []
     base_f1_list: List[float] = []
     reuse_f1_list: List[float] = []
-    kvd_true_recompute_count = 0
     qaw_true_recompute_count = 0
 
+    # 单样本流程固定为：
+    # 1) full_prefill 基线
+    # 2) full_reuse（同 prompt 的完全缓存复用）
+    # 3) query_aware（基于旧缓存的选择性重算）
     count = 0
     for sample_idx, ex in enumerate(eval_dataset, start=1):
         count += 1
@@ -210,6 +210,8 @@ def main() -> None:
         doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
         query_text = normalize_question(ex.get("question", ""))
         final_prompt = build_final_prompt(doc_prompts, q_prompt)
+        # stale_prompt 与真实问题不同，用来先构造“旧缓存”场景，
+        # 避免 query_aware 直接退化成 full_reuse。
         stale_prompt = build_stale_prompt(doc_prompts, query_text)
 
         # 方法 1：基线（关闭缓存，完整 prefill）。
@@ -244,24 +246,8 @@ def main() -> None:
         stale_warm_res = warm_prompt_cache(engine, kv_cache, stale_template_id,
                                            stale_prompt)
 
-        # 方法 3：高 KV 偏差重算。
-        kvd_session_id = f"musique-kvd-{sample_idx}"
-        seed_session_from_checkpoint(kv_cache, stale_template_id, kvd_session_id)
-        kvd_req = GenerateRequest(
-            session_id=kvd_session_id,
-            prompt=final_prompt,
-            max_new_tokens=cfg.max_new_tokens,
-            temperature=cfg.temperature,
-            top_p=cfg.top_p,
-            use_cache=True,
-            recompute_strategy="kv_diff",
-            recomp_ratio=0.16,
-            suffix_len=32,
-            query_text=query_text,
-        )
-        kvd_res = engine.generate(kvd_req)
-
-        # 方法 4：Query-aware 重算。
+        # 方法 3：在旧缓存基础上运行 query-aware，观察是否能用更少 prefill
+        # 换取更低时延，同时尽量维持答案质量。
         qaw_session_id = f"musique-qaw-{sample_idx}"
         seed_session_from_checkpoint(kv_cache, stale_template_id, qaw_session_id)
         qaw_req = GenerateRequest(
@@ -278,41 +264,33 @@ def main() -> None:
         )
         qaw_res = engine.generate(qaw_req)
 
-        kvd_true_recompute = (kvd_res.recompute_mode == "kv_diff_recompute"
-                              and kvd_res.recomputed_tokens > 0)
         qaw_true_recompute = (qaw_res.recompute_mode == "query_aware_recompute"
                               and qaw_res.recomputed_tokens > 0)
-        if kvd_true_recompute:
-            kvd_true_recompute_count += 1
         if qaw_true_recompute:
             qaw_true_recompute_count += 1
 
         reuse_ttft_list.append(reuse_res.first_token_latency_s)
-        kvd_ttft_list.append(kvd_res.first_token_latency_s)
         qaw_ttft_list.append(qaw_res.first_token_latency_s)
         base_ttft_list.append(base_res.first_token_latency_s)
         reuse_total_list.append(reuse_res.total_latency_s)
-        kvd_total_list.append(kvd_res.total_latency_s)
         qaw_total_list.append(qaw_res.total_latency_s)
         base_total_list.append(base_res.total_latency_s)
 
         reuse_f1 = max([compute_f1(reuse_res.generated_text, a, model_runner.tokenizer)
                         for a in answers]) if answers else None
-        kvd_f1 = max([compute_f1(kvd_res.generated_text, a, model_runner.tokenizer)
-                      for a in answers]) if answers else None
         qaw_f1 = max([compute_f1(qaw_res.generated_text, a, model_runner.tokenizer)
                       for a in answers]) if answers else None
         base_f1 = max([compute_f1(base_res.generated_text, a, model_runner.tokenizer)
                        for a in answers]) if answers else None
         if reuse_f1 is not None:
             reuse_f1_list.append(reuse_f1)
-        if kvd_f1 is not None:
-            kvd_f1_list.append(kvd_f1)
         if qaw_f1 is not None:
             qaw_f1_list.append(qaw_f1)
         if base_f1 is not None:
             base_f1_list.append(base_f1)
 
+        # sample_result 保留逐样本的完整对照信息，便于后续人工检查
+        # 某条样本为何变快、变慢或质量下降。
         output_writer.append_json({
             "event": "sample_result",
             "sample_idx": sample_idx,
@@ -327,16 +305,6 @@ def main() -> None:
                 "reused_prefix_tokens": reuse_res.reused_prefix_tokens,
                 "recompute_mode": reuse_res.recompute_mode,
                 "f1": reuse_f1,
-            },
-            "kv_diff": {
-                "generated_text": kvd_res.generated_text,
-                "ttft_s": kvd_res.first_token_latency_s,
-                "total_s": kvd_res.total_latency_s,
-                "reused_prefix_tokens": kvd_res.reused_prefix_tokens,
-                "recomputed_tokens": kvd_res.recomputed_tokens,
-                "recompute_mode": kvd_res.recompute_mode,
-                "true_recompute": kvd_true_recompute,
-                "f1": kvd_f1,
             },
             "query_aware": {
                 "generated_text": qaw_res.generated_text,
@@ -358,23 +326,21 @@ def main() -> None:
         if count >= args.count:
             break
 
+    # run_summary 只保留整次实验的平均指标与重算计数，
+    # 方便直接做表格或与其他脚本结果对比。
     output_writer.append_json({
         "event": "run_summary",
         # "sample_count": len(eval_dataset),
         "sample_count": count,
         "full_reuse_avg_ttft_s": _mean(reuse_ttft_list),
-        "kv_diff_avg_ttft_s": _mean(kvd_ttft_list),
         "query_aware_avg_ttft_s": _mean(qaw_ttft_list),
         "full_prefill_avg_ttft_s": _mean(base_ttft_list),
         "full_reuse_avg_total_s": _mean(reuse_total_list),
-        "kv_diff_avg_total_s": _mean(kvd_total_list),
         "query_aware_avg_total_s": _mean(qaw_total_list),
         "full_prefill_avg_total_s": _mean(base_total_list),
         "full_reuse_avg_f1": _mean(reuse_f1_list),
-        "kv_diff_avg_f1": _mean(kvd_f1_list),
         "query_aware_avg_f1": _mean(qaw_f1_list),
         "full_prefill_avg_f1": _mean(base_f1_list),
-        "kvd_true_recompute_count": kvd_true_recompute_count,
         "qaw_true_recompute_count": qaw_true_recompute_count,
         "ended_at": utc8_now_str(),
     })

@@ -17,7 +17,7 @@ if ROOT_DIR not in sys.path:
 from cache.kv_cache import KVCacheManager
 from config import RuntimeConfig
 from engine.inference_engine import InferenceEngine
-from model.yi_model import YiModelRunner
+from model.hf_model import HFModelRunner
 from schema.types import GenerateRequest
 from utils.experiment_output import ExperimentOutputWriter, utc8_now_str
 from utils.logging_utils import setup_logger
@@ -169,7 +169,7 @@ def main() -> None:
     logger.addHandler(file_handler)
     logger.propagate = False
 
-    model_runner = YiModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
+    model_runner = HFModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
                                  logger)
     kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
     engine = InferenceEngine(model_runner, kv_cache, logger)
