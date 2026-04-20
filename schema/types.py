@@ -41,7 +41,7 @@ class GenerateResult:
     generated_tokens: int
     total_latency_s: float
     first_token_latency_s: Optional[float]
-    # 本次使用的预填充模式：full_prefill / cache_prefix_reuse / kv_diff_recompute
+    # 本次使用的预填充模式：full_prefill / cache_prefix_reuse / kv_diff_recompute / query_aware_recompute
     recompute_mode: str = "full_prefill"
-    # 本次被选中重算的 token 数（仅 kv_diff_recompute 模式下有意义）。
+    # 本次被选中重算的 token 数（kv_diff/query_aware 重算模式下有意义）。
     recomputed_tokens: int = 0

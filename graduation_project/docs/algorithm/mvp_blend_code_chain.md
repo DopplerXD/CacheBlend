@@ -1,6 +1,6 @@
-# MVP 代码链路文档（按 `example/blend.py`）
+# MVP 代码链路文档（按 `example/blend.py` 与曲线实验脚本）
 
-本文描述当前 MVP 版本的实际执行链路，按 `example/blend.py` 的流程展开。
+本文描述当前 MVP 版本的实际执行链路，重点说明 full prefill、full reuse、kv_diff 与 query-aware 的触发方式。该文档用于支撑论文第三章的方法落地说明，也可服务第四章实验设计。
 
 ## 1. 启动与组件初始化
 入口：`example/blend.py`
@@ -19,84 +19,109 @@
 - 若干文档块 `0..chunk_num-1`
 - `query`
 
-`example/blend.py` 会按样本循环，分别执行三种方法对比：
-1. `kv_diff` 选择性重算
-2. `query_aware` 选择性重算
-3. `full_prefill` 基线
+`example/blend.py` 会按样本循环，执行四类路径：
+1. `full_prefill`：关闭缓存，从零完整 prefill；
+2. `full_reuse`：先对同一 prompt warm cache，再完整复用缓存；
+3. `kv_diff`：从非前缀旧缓存启动，按 KV 偏差选择更新 token；
+4. `query_aware`：从同一份非前缀旧缓存启动，按 query-token 相似度选择更新 token。
 
 ---
 
-## 3. 阶段 1：按 chunk 逐步暖缓存
-对应代码：`example/blend.py` 的 `warm_docs` 循环。
+## 3. 阶段 1：构造 final prompt 与 stale prompt
 
 流程：
-1. 每次追加一个文档块构建 `warm_prompt`
-2. 调用 `engine.generate(..., use_cache=True, max_new_tokens=0)`
-3. 引擎执行纯 prefill，并将本次 `prompt` 对应的 `past_key_values` 写回会话缓存
+1. `final_prompt`：文档内容 + 真实 query；
+2. `stale_prompt`：文档内容 + 占位问题 + 真实 query 片段；
+3. `stale_prompt` 被用于提前写入旧缓存，使后续 `final_prompt` 与缓存形成“非前缀匹配”。
 
 效果：
-- 同一个 `session_id` 下，KV 缓存逐步积累，形成可复用前缀。
+- `full_reuse` 使用同一 `final_prompt` 作为缓存来源，用于测量完整复用；
+- `kv_diff` 和 `query_aware` 使用同一份 `stale_prompt` 缓存作为旧 KV 底座，用于公平比较两种选择性重算策略。
 
 ---
 
-## 4. 阶段 2：KV-diff 重算路径
+## 4. 阶段 2：Full Prefill 基线路径
+对应代码：`base_req`。
+
+流程：
+1. 使用独立 `session_id`；
+2. 设置 `use_cache=False`；
+3. 引擎从零对完整 `final_prompt` 执行 prefill；
+4. 进入 decode。
+
+用途：
+- 作为质量和时延的主要参照基线。
+
+---
+
+## 5. 阶段 3：Full Reuse 路径
+对应代码：`reuse_template_id` 与 `reuse_req`。
+
+流程：
+1. 先调用 `warm_prompt_cache` 对 `final_prompt` 执行 `max_new_tokens=0` 的缓存写入；
+2. 将模板缓存复制到新的 `session_id`；
+3. 使用相同 `final_prompt` 发起请求；
+4. 因为缓存 token 是新 prompt 的完整前缀，进入 `cache_prefix_reuse` 分支。
+
+用途：
+- 展示理想前缀复用的低时延；
+- 不作为当前方法的主要质量基线，因为它依赖 prompt 完全一致。
+
+---
+
+## 6. 阶段 4：KV-diff 重算路径
 对应代码：`kvd_req`。
 
 流程：
-1. 构造完整问答 prompt（全部文档 + query）
-2. `engine.generate(use_cache=True)` 读取会话缓存
-3. 若缓存 token 是新 prompt 的前缀：
-   - 复用已有 `past_key_values`
-   - 只对增量 token 做 prefill
-4. 进入 decode 循环逐 token 生成
-5. 更新后的 KV 再写回缓存
+1. 先用 `stale_prompt` 写入旧缓存；
+2. 将同一份旧缓存复制给 `kvd_session_id`；
+3. 用 `final_prompt` 发起请求，并设置 `recompute_strategy="kv_diff"`；
+4. 因为旧缓存不是新 prompt 的前缀，进入 `_prefill_with_kv_diff_recompute`；
+5. 该路径先 full prefill 得到 `new_past_key_values`，再用新旧 V 的 L2 差异选择 token；
+6. 以旧 KV 为底座，将选中位置替换为 new KV，补算最后 token logits 后 decode。
 
 关键指标：
-- `reused_prefix_tokens`
+- `recompute_mode`
+- `recomputed_tokens`
 - `first_token_latency_s`
 - `total_latency_s`
 
 ---
 
-## 5. 阶段 3：Query-aware 重算路径
+## 7. 阶段 5：Query-aware 重算路径
 对应代码：`qaw_req`。
 
 流程：
-1. 同样先读取 warm 缓存
-2. 当 prompt 与缓存前缀不完全一致时，按 Query-Token 相关性选重算 token
-3. 融合 old/new KV 后继续 decode
-
----
-
-## 6. 阶段 4：基线路径生成（Normal Full Prefill）
-对应代码：`base_req`。
-
-流程：
-1. 使用独立 `session_id` 且 `use_cache=False`
-2. 引擎不读取/不写入 KV 缓存
-3. 从零开始完整 prefill，再 decode
+1. 使用与 `kv_diff` 相同的 `stale_prompt` 旧缓存；
+2. 用 `final_prompt` 发起请求，并设置 `recompute_strategy="query_aware"`；
+3. 因为旧缓存不是新 prompt 的前缀，进入 `_prefill_with_query_aware_recompute`；
+4. 根据 `query_text` 与候选 token embedding 的余弦相似度选择 token；
+5. 对选中 token 执行 packed prefill；
+6. 将 packed KV scatter 回旧 KV 底座；
+7. 补算最后 token logits 后 decode。
 
 用途：
-- 与阶段 2 做延迟和输出对比。
+- 这是论文第三章的核心方法路径。
 
 ---
 
-## 7. `InferenceEngine.generate` 内部主链路
+## 8. `InferenceEngine.generate` 内部主链路
 入口文件：`engine/inference_engine.py`
 
 1. `tokenizer.encode(prompt)` 得到 `prompt_token_ids`
 2. 若 `use_cache=True`，尝试从 `KVCacheManager.get(session_id)` 读取会话 KV
-3. 前缀命中则增量 prefill；否则全量 prefill
-4. 调 `HFModelRunner.forward_tokens(...)` 执行 prefill
-5. decode 循环：
+3. 前缀命中则进入 `cache_prefix_reuse`
+4. 非前缀命中时，根据 `recompute_strategy` 进入 `kv_diff`、`query_aware` 或回退 full prefill
+5. 调 `HFModelRunner.forward_tokens(...)` 执行 prefill 或补算 logits
+6. decode 循环：
    - 取最后 logits 采样下一个 token
    - 以 `next_token + past_key_values` 继续前向
-6. 若 `use_cache=True`，将最新 `token_ids + past_key_values` 写回 `KVCacheManager.put(...)`
-7. 返回 `GenerateResult`
+7. 若 `use_cache=True`，将最新 `token_ids + past_key_values` 写回 `KVCacheManager.put(...)`
+8. 返回 `GenerateResult`
 
 ---
 
-## 8. KV 缓存模块行为（LRU）
+## 9. KV 缓存模块行为（LRU）
 入口文件：`cache/kv_cache.py`
 
 1. `OrderedDict` 维护会话顺序
@@ -106,11 +131,15 @@
 
 ---
 
-## 9. 后续改造点（query-aware token selection）
-预留位置：`InferenceEngine._select_recompute_indices`
+## 10. 曲线实验脚本链路
 
-当前该函数返回“全量索引”，未启用部分重算。
-后续可在该函数中接入：
-1. Query-Token 相关性打分
-2. Top-K 选择
-3. 仅重算被选 token 的策略流程
+`example/blend_curve_common.py` 是 MusiQue、WikiMQA、CMRC 曲线实验的公共逻辑。
+
+关键流程：
+1. `run_fixed_baselines`：只运行一次 full prefill/full reuse 基线；
+2. `evaluate_qaw_grid`：遍历 `recomp_ratio` 和 `suffix_len`；
+3. 每个样本先用 `stale_prompt` 写缓存；
+4. 每组参数复制同一份旧缓存，保证 query-aware 比较公平；
+5. 输出 `run_summary`，后续由分析脚本汇总成 CSV 和图。
+
+该链路对应论文第四章的实验部分，但第三章可以引用它说明 `recomp_ratio` 与 `suffix_len` 的工程含义。

@@ -17,7 +17,7 @@ class InferenceEngine:
     说明：
     1. 当前仅做会话级 KV 复用。
     2. 不做并发调度与工程化优化。
-    3. 预留 query-aware token selection 的扩展接口（暂不启用）。
+    3. 支持 kv_diff 与 query-aware 两种非前缀旧缓存下的选择性重算实验路径。
     """
 
     def __init__(self, model_runner, kv_cache_manager, logger):
@@ -380,9 +380,9 @@ class InferenceEngine:
     def _select_recompute_indices(self, strategy: str,
                                   cand_states: torch.Tensor,
                                   query_states: torch.Tensor) -> torch.Tensor:
-        """预留接口：后续可在这里接入 query-aware token selection。
+        """早期预留接口：当前 query-aware 主路径不再使用该函数。
 
-        当前 MVP 不启用部分重算，因此直接返回全量索引。
+        实际选择逻辑见 `_select_token_indices_from_scores`。
         """
         del strategy, query_states
         return torch.arange(cand_states.shape[0], device=cand_states.device)
