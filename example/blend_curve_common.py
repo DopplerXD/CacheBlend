@@ -345,8 +345,13 @@ def run_fixed_baselines(
 
             answers = answer_fn(ex.get("answers", []))
             doc_prompts, q_prompt, query_text = build_sample_parts(ex, spec)
-            warm_chunk_cache(engine, spec, doc_prompts, q_prompt, query_text, cfg,
-                             f"baseline-warm-chunks-{sample_idx}")
+
+            # full_prefill 不依赖 chunk cache，先跑它，避免已预热的 chunk KV
+            # 占用显存并抬高长 prompt prefill 的峰值。
+            kv_cache.clear_chunks()
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
             base_req = build_chunk_request(
                 session_id=f"baseline-prefill-{sample_idx}",
@@ -368,6 +373,13 @@ def run_fixed_baselines(
             if base_f1 is not None:
                 base_f1_list.append(base_f1)
 
+            del base_res
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+            warm_chunk_cache(engine, spec, doc_prompts, q_prompt, query_text, cfg,
+                             f"baseline-warm-chunks-{sample_idx}")
             reuse_req = build_chunk_request(
                 session_id=f"baseline-reuse-{sample_idx}",
                 spec=spec,
@@ -386,6 +398,12 @@ def run_fixed_baselines(
                                        model_runner.tokenizer, metric_name)
             if reuse_f1 is not None:
                 reuse_f1_list.append(reuse_f1)
+
+            del reuse_res
+            kv_cache.clear_chunks()
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
     finally:
         cleanup_runtime(kv_cache, engine)
 
