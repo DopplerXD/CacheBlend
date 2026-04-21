@@ -1,0 +1,145 @@
+(venv) (yi) root@43b8f2eba4bd:~/github/CacheBlend# python example/blend_curve.py --dataset=musique --qaw-ratio-min=0 --qaw-ratio-max=1 --count=50 --model-name=/root/models/Qwen2.5-1.5B
+Starting from v4.46, the `logits` model output will have the same type as the model (except at train time, where it will always be FP32)
+We detected that you are passing `past_key_values` as a tuple of tuples. This is deprecated and will be removed in v4.47. Please convert your cache or use an appropriate `Cache` class (https://huggingface.co/docs/transformers/kv_cache#legacy-cache-format)
+[curve] 进行中 1/21, recomp_ratio=0.00, suffix_len=0
+[curve] 进行中 2/21, recomp_ratio=0.05, suffix_len=0
+[curve] 进行中 3/21, recomp_ratio=0.10, suffix_len=0
+[curve] 进行中 4/21, recomp_ratio=0.15, suffix_len=0
+[curve] 进行中 5/21, recomp_ratio=0.20, suffix_len=0
+[curve] 进行中 6/21, recomp_ratio=0.25, suffix_len=0
+[curve] 进行中 7/21, recomp_ratio=0.30, suffix_len=0
+[curve] 进行中 8/21, recomp_ratio=0.35, suffix_len=0
+[curve] 进行中 9/21, recomp_ratio=0.40, suffix_len=0
+[curve] 进行中 10/21, recomp_ratio=0.45, suffix_len=0
+[curve] 进行中 11/21, recomp_ratio=0.50, suffix_len=0
+[curve] 进行中 12/21, recomp_ratio=0.55, suffix_len=0
+[curve] 进行中 13/21, recomp_ratio=0.60, suffix_len=0
+[curve] 进行中 14/21, recomp_ratio=0.65, suffix_len=0
+[curve] 进行中 15/21, recomp_ratio=0.70, suffix_len=0
+[curve] 进行中 16/21, recomp_ratio=0.75, suffix_len=0
+[curve] 进行中 17/21, recomp_ratio=0.80, suffix_len=0
+[curve] 进行中 18/21, recomp_ratio=0.85, suffix_len=0
+[curve] 进行中 19/21, recomp_ratio=0.90, suffix_len=0
+[curve] 进行中 20/21, recomp_ratio=0.95, suffix_len=0
+[curve] 进行中 21/21, recomp_ratio=1.00, suffix_len=0
+[curve] 样本 1/50 开始
+[curve] 样本 1/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 2/50 开始
+[curve] 样本 2/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 3/50 开始
+[curve] 样本 3/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 4/50 开始
+[curve] 样本 4/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 5/50 开始
+[curve] 样本 5/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 6/50 开始
+[curve] 样本 6/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 7/50 开始
+[curve] 样本 7/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 8/50 开始
+[curve] 样本 8/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 9/50 开始
+[curve] 样本 9/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 10/50 开始
+[curve] 样本 10/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 11/50 开始
+[curve] 样本 11/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 12/50 开始
+[curve] 样本 12/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 13/50 开始
+[curve] 样本 13/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 14/50 开始
+[curve] 样本 14/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 15/50 开始
+[curve] 样本 15/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 16/50 开始
+[curve] 样本 16/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 17/50 开始
+[curve] 样本 17/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 18/50 开始
+[curve] 样本 18/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 19/50 开始
+[curve] 样本 19/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 20/50 开始
+[curve] 样本 20/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 21/50 开始
+[curve] 样本 21/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 22/50 开始
+[curve] 样本 22/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 23/50 开始
+[curve] 样本 23/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 24/50 开始
+[curve] 样本 24/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 25/50 开始
+[curve] 样本 25/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 26/50 开始
+[curve] 样本 26/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 27/50 开始
+[curve] 样本 27/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 28/50 开始
+[curve] 样本 28/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 29/50 开始
+[curve] 样本 29/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 30/50 开始
+[curve] 样本 30/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 31/50 开始
+[curve] 样本 31/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 32/50 开始
+[curve] 样本 32/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 33/50 开始
+[curve] 样本 33/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 34/50 开始
+[curve] 样本 34/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 35/50 开始
+[curve] 样本 35/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 36/50 开始
+[curve] 样本 36/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 37/50 开始
+[curve] 样本 37/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 38/50 开始
+[curve] 样本 38/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 39/50 开始
+[curve] 样本 39/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 40/50 开始
+[curve] 样本 40/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 41/50 开始
+[curve] 样本 41/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 42/50 开始
+[curve] 样本 42/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 43/50 开始
+[curve] 样本 43/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 44/50 开始
+[curve] 样本 44/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 45/50 开始
+[curve] 样本 45/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 46/50 开始
+[curve] 样本 46/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 47/50 开始
+[curve] 样本 47/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 48/50 开始
+[curve] 样本 48/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 49/50 开始
+[curve] 样本 49/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 样本 50/50 开始
+[curve] 样本 50/50 完成, 已清理显存: allocated=2953.4MB reserved=3154.0MB free=20645.2MB total=24123.4MB
+[curve] 组完成 1/21, run_summary 已写入, recomp_ratio=0.00, suffix_len=0(ignored)
+[curve] 组完成 2/21, run_summary 已写入, recomp_ratio=0.05, suffix_len=0(ignored)
+[curve] 组完成 3/21, run_summary 已写入, recomp_ratio=0.10, suffix_len=0(ignored)
+[curve] 组完成 4/21, run_summary 已写入, recomp_ratio=0.15, suffix_len=0(ignored)
+[curve] 组完成 5/21, run_summary 已写入, recomp_ratio=0.20, suffix_len=0(ignored)
+[curve] 组完成 6/21, run_summary 已写入, recomp_ratio=0.25, suffix_len=0(ignored)
+[curve] 组完成 7/21, run_summary 已写入, recomp_ratio=0.30, suffix_len=0(ignored)
+[curve] 组完成 8/21, run_summary 已写入, recomp_ratio=0.35, suffix_len=0(ignored)
+[curve] 组完成 9/21, run_summary 已写入, recomp_ratio=0.40, suffix_len=0(ignored)
+[curve] 组完成 10/21, run_summary 已写入, recomp_ratio=0.45, suffix_len=0(ignored)
+[curve] 组完成 11/21, run_summary 已写入, recomp_ratio=0.50, suffix_len=0(ignored)
+[curve] 组完成 12/21, run_summary 已写入, recomp_ratio=0.55, suffix_len=0(ignored)
+[curve] 组完成 13/21, run_summary 已写入, recomp_ratio=0.60, suffix_len=0(ignored)
+[curve] 组完成 14/21, run_summary 已写入, recomp_ratio=0.65, suffix_len=0(ignored)
+[curve] 组完成 15/21, run_summary 已写入, recomp_ratio=0.70, suffix_len=0(ignored)
+[curve] 组完成 16/21, run_summary 已写入, recomp_ratio=0.75, suffix_len=0(ignored)
+[curve] 组完成 17/21, run_summary 已写入, recomp_ratio=0.80, suffix_len=0(ignored)
+[curve] 组完成 18/21, run_summary 已写入, recomp_ratio=0.85, suffix_len=0(ignored)
+[curve] 组完成 19/21, run_summary 已写入, recomp_ratio=0.90, suffix_len=0(ignored)
+[curve] 组完成 20/21, run_summary 已写入, recomp_ratio=0.95, suffix_len=0(ignored)
+[curve] 组完成 21/21, run_summary 已写入, recomp_ratio=1.00, suffix_len=0(ignored)
