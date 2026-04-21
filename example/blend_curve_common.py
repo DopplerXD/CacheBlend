@@ -34,7 +34,9 @@ _EXAMPLE_UTILS_MODULE = importlib.util.module_from_spec(_EXAMPLE_UTILS_SPEC)
 _EXAMPLE_UTILS_SPEC.loader.exec_module(_EXAMPLE_UTILS_MODULE)
 
 build_qa_prompt = _EXAMPLE_UTILS_MODULE.build_qa_prompt
+build_fewshot_prompt = _EXAMPLE_UTILS_MODULE.build_fewshot_prompt
 compute_f1 = _EXAMPLE_UTILS_MODULE.compute_f1
+compute_rl = _EXAMPLE_UTILS_MODULE.compute_rl
 normalize_question = _EXAMPLE_UTILS_MODULE.normalize_question
 
 
@@ -105,6 +107,20 @@ DATASET_SPECS: Dict[str, Dict] = {
         "grid_curve_tag": "cmrc_ratio_suffix_curve",
         "prefill_only_baseline": True,
     },
+    "samsum": {
+        "dataset_path": "inputs/samsum.json",
+        "prefix_prompt": (
+            "Summarize the dialogue into a few short sentences. "
+            "The following are some examples.\n\n"
+        ),
+        "query_prompt": "",
+        "answer_fn": _default_answers,
+        "ratio_curve_tag": "samsum_curve",
+        "suffix_curve_tag": "samsum_suffix_curve",
+        "grid_curve_tag": "samsum_ratio_suffix_curve",
+        "prompt_kind": "fewshot",
+        "metric": "rougeL",
+    },
 }
 
 
@@ -121,6 +137,22 @@ def safe_max_f1(pred_text: str, answers: List[str], tokenizer) -> Optional[float
         return max([compute_f1(pred_text, answer, tokenizer) for answer in answers])
     except Exception:
         return 0.0
+
+
+def safe_max_rougel(pred_text: str, answers: List[str]) -> Optional[float]:
+    if not answers:
+        return None
+    try:
+        return max([compute_rl(pred_text, answer) for answer in answers])
+    except Exception:
+        return None
+
+
+def safe_max_metric(pred_text: str, answers: List[str], tokenizer,
+                    metric: str) -> Optional[float]:
+    if metric == "rougeL":
+        return safe_max_rougel(pred_text, answers)
+    return safe_max_f1(pred_text, answers, tokenizer)
 
 
 def float_grid(min_value: float, max_value: float, step: float) -> List[float]:
@@ -154,12 +186,37 @@ def build_final_prompt(prefix_prompt: str, doc_prompts: List[str], q_prompt: str
     return build_prefix_prompt(prefix_prompt, doc_prompts) + q_prompt
 
 
-def build_stale_prompt(prefix_prompt: str, query_prompt: str, doc_prompts: List[str],
-                       query_text: str) -> str:
-    stale_q_prompt = (
-        f"{query_prompt} Placeholder cache-warm question: {query_text}\nAnswer:"
+def build_sample_parts(ex: Dict, spec: Dict) -> Tuple[List[str], str, str]:
+    if spec.get("prompt_kind") == "fewshot":
+        doc_prompts, q_prompt = build_fewshot_prompt(ex)
+        query_text = (ex.get("question", "") or "").strip()
+        return doc_prompts, q_prompt, query_text
+    doc_prompts, q_prompt = build_qa_prompt(ex, spec["query_prompt"])
+    query_text = normalize_question(ex.get("question", ""))
+    return doc_prompts, q_prompt, query_text
+
+
+def build_chunk_request(session_id: str, spec: Dict, doc_prompts: List[str],
+                        q_prompt: str, query_text: str, cfg: RuntimeConfig,
+                        use_cache: bool, recompute_strategy: str,
+                        recomp_ratio: float = 0.0,
+                        max_new_tokens: Optional[int] = None) -> GenerateRequest:
+    final_prompt = build_final_prompt(spec["prefix_prompt"], doc_prompts, q_prompt)
+    return GenerateRequest(
+        session_id=session_id,
+        prompt=final_prompt,
+        max_new_tokens=cfg.max_new_tokens if max_new_tokens is None else max_new_tokens,
+        temperature=cfg.temperature,
+        top_p=cfg.top_p,
+        use_cache=use_cache,
+        recompute_strategy=recompute_strategy,
+        recomp_ratio=recomp_ratio,
+        query_text=query_text,
+        prefix_text=spec["prefix_prompt"],
+        chunk_texts=doc_prompts,
+        suffix_text=q_prompt,
+        chunk_namespace=str(spec.get("ratio_curve_tag", "chunk_curve")),
     )
-    return build_final_prompt(prefix_prompt, doc_prompts, stale_q_prompt)
 
 
 def load_dataset(dataset_name: str) -> Tuple[Dict, List[Dict]]:
@@ -198,6 +255,23 @@ def warm_prompt_cache(engine: InferenceEngine, kv_cache: KVCacheManager,
         top_p=1.0,
         use_cache=True,
         recompute_strategy="none",
+    )
+    return engine.generate(warm_req)
+
+
+def warm_chunk_cache(engine: InferenceEngine, spec: Dict,
+                     doc_prompts: List[str], q_prompt: str,
+                     query_text: str, cfg: RuntimeConfig, session_id: str):
+    warm_req = build_chunk_request(
+        session_id=session_id,
+        spec=spec,
+        doc_prompts=doc_prompts,
+        q_prompt=q_prompt,
+        query_text=query_text,
+        cfg=cfg,
+        use_cache=True,
+        recompute_strategy="none",
+        max_new_tokens=0,
     )
     return engine.generate(warm_req)
 
@@ -247,7 +321,7 @@ def run_fixed_baselines(
     sample_limit: int,
 ) -> Dict[str, Optional[float]]:
     """仅运行一次 full_reuse / full_prefill，供全部曲线组复用。"""
-    kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
+    kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger, cfg.kv_max_chunks)
     engine = InferenceEngine(model_runner, kv_cache, logger)
 
     base_ttft_list: List[float] = []
@@ -255,10 +329,10 @@ def run_fixed_baselines(
     base_f1_list: List[float] = []
 
     answer_fn = spec["answer_fn"]
-    prefill_only_baseline = bool(spec.get("prefill_only_baseline", False))
     reuse_ttft_list: List[float] = []
     reuse_total_list: List[float] = []
     reuse_f1_list: List[float] = []
+    metric_name = spec.get("metric", "f1")
     count = 0
     try:
         for sample_idx, ex in enumerate(eval_dataset, start=1):
@@ -267,16 +341,17 @@ def run_fixed_baselines(
             count += 1
 
             answers = answer_fn(ex.get("answers", []))
-            doc_prompts, q_prompt = build_qa_prompt(ex, spec["query_prompt"])
-            final_prompt = build_final_prompt(spec["prefix_prompt"], doc_prompts,
-                                              q_prompt)
+            doc_prompts, q_prompt, query_text = build_sample_parts(ex, spec)
+            warm_chunk_cache(engine, spec, doc_prompts, q_prompt, query_text, cfg,
+                             f"baseline-warm-chunks-{sample_idx}")
 
-            base_req = GenerateRequest(
+            base_req = build_chunk_request(
                 session_id=f"baseline-prefill-{sample_idx}",
-                prompt=final_prompt,
-                max_new_tokens=cfg.max_new_tokens,
-                temperature=cfg.temperature,
-                top_p=cfg.top_p,
+                spec=spec,
+                doc_prompts=doc_prompts,
+                q_prompt=q_prompt,
+                query_text=query_text,
+                cfg=cfg,
                 use_cache=False,
                 recompute_strategy="none",
             )
@@ -285,44 +360,41 @@ def run_fixed_baselines(
             base_ttft_list.append(base_res.first_token_latency_s)
             base_total_list.append(base_res.total_latency_s)
 
-            base_f1 = safe_max_f1(base_res.generated_text, answers,
-                                  model_runner.tokenizer)
+            base_f1 = safe_max_metric(base_res.generated_text, answers,
+                                      model_runner.tokenizer, metric_name)
             if base_f1 is not None:
                 base_f1_list.append(base_f1)
-            if not prefill_only_baseline:
-                reuse_template_id = f"baseline-reuse-template-{sample_idx}"
-                warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
-                reuse_session_id = f"baseline-reuse-{sample_idx}"
-                seed_session_cache(kv_cache, reuse_template_id, reuse_session_id)
-                reuse_req = GenerateRequest(
-                    session_id=reuse_session_id,
-                    prompt=final_prompt,
-                    max_new_tokens=cfg.max_new_tokens,
-                    temperature=cfg.temperature,
-                    top_p=cfg.top_p,
-                    use_cache=True,
-                    recompute_strategy="none",
-                )
-                reuse_res = engine.generate(reuse_req)
-                reuse_ttft_list.append(reuse_res.first_token_latency_s)
-                reuse_total_list.append(reuse_res.total_latency_s)
 
-                reuse_f1 = safe_max_f1(reuse_res.generated_text, answers,
-                                       model_runner.tokenizer)
-                if reuse_f1 is not None:
-                    reuse_f1_list.append(reuse_f1)
+            reuse_req = build_chunk_request(
+                session_id=f"baseline-reuse-{sample_idx}",
+                spec=spec,
+                doc_prompts=doc_prompts,
+                q_prompt=q_prompt,
+                query_text=query_text,
+                cfg=cfg,
+                use_cache=True,
+                recompute_strategy="none",
+            )
+            reuse_res = engine.generate(reuse_req)
+            reuse_ttft_list.append(reuse_res.first_token_latency_s)
+            reuse_total_list.append(reuse_res.total_latency_s)
+
+            reuse_f1 = safe_max_metric(reuse_res.generated_text, answers,
+                                       model_runner.tokenizer, metric_name)
+            if reuse_f1 is not None:
+                reuse_f1_list.append(reuse_f1)
     finally:
         cleanup_runtime(kv_cache, engine)
 
     return {
         "sample_count": count,
-        "full_reuse_avg_ttft_s": None if prefill_only_baseline else mean(reuse_ttft_list),
+        "full_reuse_avg_ttft_s": mean(reuse_ttft_list),
         "kv_diff_avg_ttft_s": None,
         "full_prefill_avg_ttft_s": mean(base_ttft_list),
-        "full_reuse_avg_total_s": None if prefill_only_baseline else mean(reuse_total_list),
+        "full_reuse_avg_total_s": mean(reuse_total_list),
         "kv_diff_avg_total_s": None,
         "full_prefill_avg_total_s": mean(base_total_list),
-        "full_reuse_avg_f1": None if prefill_only_baseline else mean(reuse_f1_list),
+        "full_reuse_avg_f1": mean(reuse_f1_list),
         "kv_diff_avg_f1": None,
         "full_prefill_avg_f1": mean(base_f1_list),
         "kvd_true_recompute_count": 0,
@@ -361,6 +433,7 @@ def evaluate_qaw_grid(
 
     processed_samples = 0
     answer_fn = spec["answer_fn"]
+    metric_name = spec.get("metric", "f1")
     for sample_idx, ex in enumerate(eval_dataset, start=1):
         if processed_samples >= sample_limit:
             break
@@ -368,45 +441,38 @@ def evaluate_qaw_grid(
         print(f"[curve] 样本 {processed_samples}/{sample_limit} 开始", flush=True)
 
         answers = answer_fn(ex.get("answers", []))
-        doc_prompts, q_prompt = build_qa_prompt(ex, spec["query_prompt"])
-        query_text = normalize_question(ex.get("question", ""))
-        final_prompt = build_final_prompt(spec["prefix_prompt"], doc_prompts, q_prompt)
-        stale_prompt = build_stale_prompt(spec["prefix_prompt"], spec["query_prompt"],
-                                          doc_prompts, query_text)
+        doc_prompts, q_prompt, query_text = build_sample_parts(ex, spec)
 
-        kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
+        kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger, cfg.kv_max_chunks)
         engine = InferenceEngine(model_runner, kv_cache, logger)
-        stale_template_id = f"sample-{sample_idx}-stale-template"
 
         try:
-            warm_prompt_cache(engine, kv_cache, stale_template_id, stale_prompt)
+            warm_chunk_cache(engine, spec, doc_prompts, q_prompt, query_text, cfg,
+                             f"sample-{sample_idx}-warm-chunks")
             for recomp_ratio, suffix_len in grid_pairs:
                 ratio_tag = f"{recomp_ratio:.2f}".replace(".", "p")
-                qaw_session_id = f"sample-{sample_idx}-qaw-r{ratio_tag}-s{suffix_len}"
-                seed_session_cache(kv_cache, stale_template_id, qaw_session_id)
-                qaw_req = GenerateRequest(
-                    session_id=qaw_session_id,
-                    prompt=final_prompt,
-                    max_new_tokens=cfg.max_new_tokens,
-                    temperature=cfg.temperature,
-                    top_p=cfg.top_p,
+                qaw_req = build_chunk_request(
+                    session_id=f"sample-{sample_idx}-qaw-r{ratio_tag}",
+                    spec=spec,
+                    doc_prompts=doc_prompts,
+                    q_prompt=q_prompt,
+                    query_text=query_text,
+                    cfg=cfg,
                     use_cache=True,
                     recompute_strategy="query_aware",
                     recomp_ratio=recomp_ratio,
-                    suffix_len=suffix_len,
-                    query_text=query_text,
                 )
                 qaw_res = engine.generate(qaw_req)
 
                 bucket = metrics[(recomp_ratio, suffix_len)]
                 bucket["ttft"].append(qaw_res.first_token_latency_s)
                 bucket["total"].append(qaw_res.total_latency_s)
-                if (qaw_res.recompute_mode == "query_aware_recompute"
+                if (qaw_res.recompute_mode == "chunk_query_aware_recompute"
                         and qaw_res.recomputed_tokens > 0):
                     bucket["true_recompute"] += 1
 
-                qaw_f1 = safe_max_f1(qaw_res.generated_text, answers,
-                                     model_runner.tokenizer)
+                qaw_f1 = safe_max_metric(qaw_res.generated_text, answers,
+                                         model_runner.tokenizer, metric_name)
                 if qaw_f1 is not None:
                     bucket["f1"].append(qaw_f1)
         finally:

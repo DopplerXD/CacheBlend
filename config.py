@@ -25,6 +25,7 @@ class RuntimeConfig:
 
     # KV 缓存策略（简单 LRU + TTL）。
     kv_max_sessions: int = int(os.getenv("KV_MAX_SESSIONS", "16"))
+    kv_max_chunks: int = int(os.getenv("KV_MAX_CHUNKS", "2048"))
     kv_ttl_seconds: int = int(os.getenv("KV_TTL_SECONDS", "3600"))
 
     # 日志级别。

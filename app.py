@@ -14,7 +14,7 @@ def build_engine(cfg: RuntimeConfig):
     logger = setup_logger("app", cfg.log_level)
     model_runner = HFModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
                                  logger)
-    kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
+    kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger, cfg.kv_max_chunks)
     engine = InferenceEngine(model_runner, kv_cache, logger)
     return engine, logger
 

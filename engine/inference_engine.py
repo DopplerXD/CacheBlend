@@ -1,13 +1,14 @@
-"""MVP 推理主链路：prefill + decode + 会话 KV 复用。"""
+"""MVP 推理主链路：prefill + decode + chunk KV 复用。"""
 
 from __future__ import annotations
 
-import time
 import hashlib
+import time
 from typing import Any, List, Tuple
 
 import torch
 
+from cache.kv_fusion import concat_past_key_values, scatter_selected_past_key_values
 from schema.types import GenerateRequest, GenerateResult
 
 
@@ -15,9 +16,9 @@ class InferenceEngine:
     """最小可用推理引擎。
 
     说明：
-    1. 当前仅做会话级 KV 复用。
-    2. 不做并发调度与工程化优化。
-    3. 支持 kv_diff 与 query-aware 两种非前缀旧缓存下的选择性重算实验路径。
+    1. chunk-aware 请求走 chunk KV 池、RoPE 重定位与可选 QAW 融合。
+    2. legacy prompt 请求保留旧 session-prefix 路径，便于兼容 CLI。
+    3. 不做并发调度与工程化优化。
     """
 
     def __init__(self, model_runner, kv_cache_manager, logger):
@@ -142,6 +143,259 @@ class InferenceEngine:
             return int(fallback_seed)
         digest = hashlib.sha256(session_id.encode("utf-8")).digest()
         return int.from_bytes(digest[:4], byteorder="big", signed=False)
+
+    def _encode_chunk_request(
+            self, req: GenerateRequest) -> Tuple[List[int], List[List[int]],
+                                                 List[int], List[int]]:
+        """将 chunk-aware 请求编码为 prefix/chunks/suffix token。"""
+        prefix_token_ids = (self.model_runner.encode(req.prefix_text)
+                            if req.prefix_text else [])
+        chunk_token_ids_list = [
+            self.model_runner.encode_no_special(text)
+            for text in (req.chunk_texts or [])
+        ]
+        suffix_token_ids = (self.model_runner.encode_no_special(req.suffix_text)
+                            if req.suffix_text else [])
+        prompt_token_ids = list(prefix_token_ids)
+        for chunk_ids in chunk_token_ids_list:
+            prompt_token_ids.extend(chunk_ids)
+        prompt_token_ids.extend(suffix_token_ids)
+        if not prompt_token_ids:
+            prompt_token_ids = self.model_runner.encode(req.prompt)
+        return prefix_token_ids, chunk_token_ids_list, suffix_token_ids, prompt_token_ids
+
+    def _get_or_warm_chunk_past(self, req: GenerateRequest,
+                                chunk_token_ids: List[int]) -> Tuple[Any, bool]:
+        """读取或预热单个独立 chunk KV。"""
+        if len(chunk_token_ids) == 0:
+            return None, True
+        cache_key = self.kv_cache.build_chunk_key(
+            namespace=req.chunk_namespace,
+            model_name=self.model_runner.model_name,
+            token_ids=chunk_token_ids,
+        )
+        entry = self.kv_cache.get_chunk(cache_key)
+        if entry is not None:
+            return entry.past_key_values, True
+
+        _, past_key_values = self.model_runner.forward_tokens(
+            chunk_token_ids, past_key_values=None)
+        self.kv_cache.put_chunk(
+            cache_key=cache_key,
+            namespace=req.chunk_namespace,
+            token_ids=chunk_token_ids,
+            past_key_values=past_key_values,
+        )
+        return past_key_values, False
+
+    def _build_chunk_reuse_context(
+            self, req: GenerateRequest, prefix_token_ids: List[int],
+            chunk_token_ids_list: List[List[int]]) -> Tuple[Any, List[int], List[int],
+                                                            int, int, int]:
+        """构建 prefix + rebased chunks 的 KV，并返回 chunk token 与全局位置。"""
+        past_key_values: Any = None
+        chunk_token_ids: List[int] = []
+        chunk_global_positions: List[int] = []
+        cache_hits = 0
+        cache_misses = 0
+        cache_hit_tokens = 0
+
+        if prefix_token_ids:
+            _, past_key_values = self.model_runner.forward_tokens(
+                prefix_token_ids, past_key_values=None)
+
+        current_len = len(prefix_token_ids)
+        for one_chunk_token_ids in chunk_token_ids_list:
+            if not one_chunk_token_ids:
+                continue
+            chunk_past, hit = self._get_or_warm_chunk_past(req, one_chunk_token_ids)
+            if hit:
+                cache_hits += 1
+                cache_hit_tokens += len(one_chunk_token_ids)
+            else:
+                cache_misses += 1
+            rebased_chunk_past = self.model_runner.rebase_past_key_values_positions(
+                chunk_past,
+                source_start=0,
+                target_start=current_len,
+            )
+            past_key_values = concat_past_key_values(past_key_values,
+                                                     rebased_chunk_past)
+            chunk_token_ids.extend(one_chunk_token_ids)
+            chunk_global_positions.extend(
+                range(current_len, current_len + len(one_chunk_token_ids)))
+            current_len += len(one_chunk_token_ids)
+
+        return (past_key_values, chunk_token_ids, chunk_global_positions, cache_hits,
+                cache_misses, cache_hit_tokens)
+
+    def _select_qaw_chunk_indices(self, req: GenerateRequest,
+                                  chunk_token_ids: List[int]) -> torch.Tensor:
+        """在 chunk token 区间内按 query-aware 分数选择重算位置。"""
+        chunk_len = len(chunk_token_ids)
+        if chunk_len == 0 or req.recomp_ratio <= 0:
+            return torch.zeros(0, dtype=torch.long, device=self.model_runner.device)
+
+        query_text = req.query_text.strip() or req.suffix_text.strip()
+        query_token_ids = (self.model_runner.encode_no_special(query_text)
+                           if query_text else [])
+        scores = self._compute_query_aware_scores(
+            prompt_token_ids=chunk_token_ids,
+            query_token_ids=query_token_ids,
+            overlap_len=chunk_len,
+        )
+        qaw_variant = (req.qaw_variant or "default").lower()
+        if qaw_variant == "random_topk":
+            generator = torch.Generator(device=scores.device)
+            generator.manual_seed(
+                self._derive_stable_seed(req.session_id, req.qaw_random_seed))
+            topk_num = min(chunk_len, max(1, int(chunk_len * req.recomp_ratio)))
+            return torch.sort(
+                torch.randperm(chunk_len, device=scores.device,
+                               generator=generator)[:topk_num]).values
+
+        topk_num = min(chunk_len, max(1, int(chunk_len * req.recomp_ratio)))
+        return torch.sort(torch.topk(scores, k=topk_num).indices).values
+
+    def _apply_chunk_query_aware_recompute(
+            self, req: GenerateRequest, past_key_values: Any,
+            chunk_token_ids: List[int],
+            chunk_global_positions: List[int]) -> Tuple[Any, int]:
+        """对已拼接的 chunk KV 做 query-aware selected KV 更新。"""
+        selected_chunk_indices = self._select_qaw_chunk_indices(req, chunk_token_ids)
+        if selected_chunk_indices.numel() == 0:
+            return past_key_values, 0
+
+        selected_chunk_list = [int(i) for i in selected_chunk_indices.tolist()]
+        selected_token_ids = [chunk_token_ids[i] for i in selected_chunk_list]
+        selected_global_positions = [
+            chunk_global_positions[i] for i in selected_chunk_list
+        ]
+        selected_global_tensor = torch.tensor(
+            selected_global_positions,
+            dtype=torch.long,
+            device=self.model_runner.device,
+        )
+
+        _, selected_past_key_values = self.model_runner.forward_tokens(
+            selected_token_ids,
+            past_key_values=None,
+            position_ids=selected_global_positions,
+        )
+        blended_past_key_values = scatter_selected_past_key_values(
+            base_past_key_values=past_key_values,
+            selected_past_key_values=selected_past_key_values,
+            selected_indices=selected_global_tensor,
+        )
+        self.logger.info(
+            "chunk query-aware 重算: chunks_tokens=%d selected=%d ratio=%.3f",
+            len(chunk_token_ids),
+            int(selected_chunk_indices.numel()),
+            req.recomp_ratio,
+        )
+        return blended_past_key_values, int(selected_chunk_indices.numel())
+
+    def _prefill_suffix_or_last_token(self, prompt_token_ids: List[int],
+                                      suffix_token_ids: List[int],
+                                      past_key_values: Any) -> Tuple[torch.Tensor, Any]:
+        """在拼接 KV 后计算 suffix/query，或补算最后一个 prompt token logits。"""
+        past_len = self.model_runner.get_past_len(past_key_values)
+        if suffix_token_ids:
+            position_ids = list(range(past_len, past_len + len(suffix_token_ids)))
+            return self.model_runner.forward_tokens(
+                suffix_token_ids,
+                past_key_values=past_key_values,
+                position_ids=position_ids,
+            )
+
+        if len(prompt_token_ids) == 1:
+            return self.model_runner.forward_tokens(
+                [prompt_token_ids[0]],
+                past_key_values=None,
+                position_ids=[0],
+            )
+
+        prefix_past = self.model_runner.truncate_past_key_values(
+            past_key_values, len(prompt_token_ids) - 1)
+        return self.model_runner.forward_tokens(
+            [prompt_token_ids[-1]],
+            past_key_values=prefix_past,
+            position_ids=[len(prompt_token_ids) - 1],
+        )
+
+    def _generate_chunk_aware(self, req: GenerateRequest) -> GenerateResult:
+        """chunk 级缓存主链路：full_prefill / full_reuse / qaw。"""
+        t_start = time.perf_counter()
+        first_token_latency_s = None
+        recompute_strategy = self._resolve_recompute_strategy(req)
+
+        (prefix_token_ids, chunk_token_ids_list, suffix_token_ids,
+         prompt_token_ids) = self._encode_chunk_request(req)
+
+        chunk_cache_hits = 0
+        chunk_cache_misses = 0
+        cache_hit_tokens = 0
+        recomputed_tokens = 0
+
+        if not req.use_cache:
+            logits, past_key_values = self.model_runner.forward_tokens(
+                prompt_token_ids, past_key_values=None)
+            recompute_mode = "full_prefill"
+        else:
+            (past_key_values, chunk_token_ids, chunk_global_positions,
+             chunk_cache_hits, chunk_cache_misses,
+             cache_hit_tokens) = self._build_chunk_reuse_context(
+                 req=req,
+                 prefix_token_ids=prefix_token_ids,
+                 chunk_token_ids_list=chunk_token_ids_list,
+             )
+            recompute_mode = "chunk_full_reuse"
+            if recompute_strategy == "query_aware":
+                past_key_values, recomputed_tokens = (
+                    self._apply_chunk_query_aware_recompute(
+                        req=req,
+                        past_key_values=past_key_values,
+                        chunk_token_ids=chunk_token_ids,
+                        chunk_global_positions=chunk_global_positions,
+                    ))
+                recompute_mode = "chunk_query_aware_recompute"
+            logits, past_key_values = self._prefill_suffix_or_last_token(
+                prompt_token_ids=prompt_token_ids,
+                suffix_token_ids=suffix_token_ids,
+                past_key_values=past_key_values,
+            )
+
+        generated_ids: List[int] = []
+        eos_id = self.model_runner.eos_token_id()
+        for _ in range(req.max_new_tokens):
+            next_token_id = self._sample_next_token(logits, req.temperature,
+                                                    req.top_p)
+            generated_ids.append(next_token_id)
+            if first_token_latency_s is None:
+                first_token_latency_s = time.perf_counter() - t_start
+            if eos_id is not None and next_token_id == eos_id:
+                self.logger.info("命中 EOS，提前结束生成")
+                break
+            logits, past_key_values = self.model_runner.forward_tokens(
+                [next_token_id], past_key_values=past_key_values)
+
+        generated_text = self.model_runner.decode(generated_ids)
+        full_text = self.model_runner.decode(prompt_token_ids + generated_ids)
+        total_latency_s = time.perf_counter() - t_start
+        return GenerateResult(
+            generated_text=generated_text,
+            full_text=full_text,
+            reused_prefix_tokens=0 if not req.use_cache else cache_hit_tokens,
+            prompt_tokens=len(prompt_token_ids),
+            generated_tokens=len(generated_ids),
+            total_latency_s=total_latency_s,
+            first_token_latency_s=first_token_latency_s,
+            recompute_mode=recompute_mode,
+            recomputed_tokens=recomputed_tokens,
+            chunk_count=len(chunk_token_ids_list),
+            chunk_cache_hits=chunk_cache_hits,
+            chunk_cache_misses=chunk_cache_misses,
+        )
 
     def _build_blended_past_key_values(self, old_past_key_values: Any,
                                        new_past_key_values: Any, new_len: int,
@@ -388,6 +642,9 @@ class InferenceEngine:
         return torch.arange(cand_states.shape[0], device=cand_states.device)
 
     def generate(self, req: GenerateRequest) -> GenerateResult:
+        if req.chunk_texts is not None:
+            return self._generate_chunk_aware(req)
+
         t_start = time.perf_counter()
         first_token_latency_s = None
         recompute_strategy = self._resolve_recompute_strategy(req)

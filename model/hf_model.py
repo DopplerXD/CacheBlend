@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Sequence, Tuple
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -65,6 +65,96 @@ class HFModelRunner:
 
     def eos_token_id(self) -> int:
         return self.tokenizer.eos_token_id
+
+    def _find_rotary_inv_freq(self) -> torch.Tensor:
+        """查找 LLaMA/Yi/Qwen 系 RoPE 的 inv_freq。"""
+        for module in self.model.modules():
+            if hasattr(module, "inv_freq"):
+                inv_freq = getattr(module, "inv_freq")
+                if torch.is_tensor(inv_freq) and inv_freq.numel() > 0:
+                    return inv_freq.to(self.device)
+        raise RuntimeError(
+            "当前模型未暴露 rotary_emb.inv_freq，无法执行 chunk KV RoPE 重定位")
+
+    @staticmethod
+    def _rotate_half(x: torch.Tensor) -> torch.Tensor:
+        half = x.shape[-1] // 2
+        x1 = x[..., :half]
+        x2 = x[..., half:]
+        return torch.cat((-x2, x1), dim=-1)
+
+    def _apply_rope_to_key(self, key: torch.Tensor,
+                           positions: Sequence[int]) -> torch.Tensor:
+        """对 key 的 RoPE 维度按给定 position 旋转。"""
+        inv_freq = self._find_rotary_inv_freq()
+        rotary_dim = int(inv_freq.numel() * 2)
+        if rotary_dim > key.shape[-1]:
+            raise RuntimeError(
+                f"RoPE rotary_dim={rotary_dim} 大于 key head_dim={key.shape[-1]}")
+
+        pos = torch.tensor(list(positions),
+                           dtype=inv_freq.dtype,
+                           device=self.device)
+        freqs = torch.outer(pos, inv_freq)
+        emb = torch.cat([freqs, freqs], dim=-1)
+        cos = emb.cos()[None, None, :, :]
+        sin = emb.sin()[None, None, :, :]
+
+        key_rot = key[..., :rotary_dim]
+        key_pass = key[..., rotary_dim:]
+        rotated = (key_rot * cos) + (self._rotate_half(key_rot) * sin)
+        if key_pass.numel() == 0:
+            return rotated
+        return torch.cat([rotated, key_pass], dim=-1)
+
+    def _unapply_rope_from_key(self, key: torch.Tensor,
+                               positions: Sequence[int]) -> torch.Tensor:
+        """对 key 的 RoPE 维度按给定 position 反向旋转。"""
+        inv_freq = self._find_rotary_inv_freq()
+        rotary_dim = int(inv_freq.numel() * 2)
+        if rotary_dim > key.shape[-1]:
+            raise RuntimeError(
+                f"RoPE rotary_dim={rotary_dim} 大于 key head_dim={key.shape[-1]}")
+
+        pos = torch.tensor(list(positions),
+                           dtype=inv_freq.dtype,
+                           device=self.device)
+        freqs = torch.outer(pos, inv_freq)
+        emb = torch.cat([freqs, freqs], dim=-1)
+        cos = emb.cos()[None, None, :, :]
+        sin = emb.sin()[None, None, :, :]
+
+        key_rot = key[..., :rotary_dim]
+        key_pass = key[..., rotary_dim:]
+        unrotated = (key_rot * cos) - (self._rotate_half(key_rot) * sin)
+        if key_pass.numel() == 0:
+            return unrotated
+        return torch.cat([unrotated, key_pass], dim=-1)
+
+    @torch.inference_mode()
+    def rebase_past_key_values_positions(self, past_key_values: Any,
+                                         source_start: int,
+                                         target_start: int) -> Any:
+        """将独立 chunk KV 从本地 RoPE position 重定位到全局 position。"""
+        if past_key_values is None:
+            return None
+        seq_len = self.get_past_len(past_key_values)
+        source_positions = list(range(source_start, source_start + seq_len))
+        target_positions = list(range(target_start, target_start + seq_len))
+        if source_positions == target_positions:
+            rebased_same = []
+            for layer in past_key_values:
+                k, v, *rest = layer
+                rebased_same.append((k.clone(), v.clone(), *rest))
+            return tuple(rebased_same)
+
+        rebased = []
+        for layer in past_key_values:
+            k, v, *rest = layer
+            raw_k = self._unapply_rope_from_key(k, source_positions)
+            target_k = self._apply_rope_to_key(raw_k, target_positions)
+            rebased.append((target_k, v.clone(), *rest))
+        return tuple(rebased)
 
     @staticmethod
     def get_past_len(past_key_values: Any) -> int:

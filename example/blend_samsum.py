@@ -1,13 +1,14 @@
-"""MusiQue 实验脚本：比较 full_prefill、full_reuse、query_aware 三种路径。"""
+"""SAMSum chunk-cache 实验：full_prefill / full_reuse / query_aware。"""
+
+from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import sys
-import importlib.util
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
-# 允许从项目根目录导入模块（保持 `python example/blend_musique.py` 可直接运行）。
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
@@ -31,19 +32,13 @@ if _EXAMPLE_UTILS_SPEC is None or _EXAMPLE_UTILS_SPEC.loader is None:
 _EXAMPLE_UTILS_MODULE = importlib.util.module_from_spec(_EXAMPLE_UTILS_SPEC)
 _EXAMPLE_UTILS_SPEC.loader.exec_module(_EXAMPLE_UTILS_MODULE)
 
-build_qa_prompt = _EXAMPLE_UTILS_MODULE.build_qa_prompt
-compute_f1 = _EXAMPLE_UTILS_MODULE.compute_f1
-normalize_question = _EXAMPLE_UTILS_MODULE.normalize_question
+build_fewshot_prompt = _EXAMPLE_UTILS_MODULE.build_fewshot_prompt
+compute_rl = _EXAMPLE_UTILS_MODULE.compute_rl
 
 
 PREFIX_PROMPT = (
-    "You will be asked a question after reading several passages. "
-    "Please directly answer the question based on the given passages. "
-    "Do NOT repeat the question. The answer should be within 5 words.\nPassages:\n"
-)
-QUERY_PROMPT = (
-    "\n\nAnswer the question directly based on the given passages. "
-    "Do NOT repeat the question. The answer should be within 5 words. \nQuestion:"
+    "Summarize the dialogue into a few short sentences. "
+    "The following are some examples.\n\n"
 )
 
 
@@ -53,88 +48,21 @@ def _mean(values: List[float]) -> Optional[float]:
     return sum(values) / len(values)
 
 
+def _safe_max_rougel(pred_text: str, answers: List[str]) -> Optional[float]:
+    if not answers:
+        return None
+    try:
+        return max([compute_rl(pred_text, answer) for answer in answers])
+    except Exception:
+        return None
+
+
 def build_prefix_prompt(doc_prompts: List[str]) -> str:
-    """构造文档前缀，作为 chunk checkpoint 的可复用前缀。"""
     return PREFIX_PROMPT + "".join(doc_prompts)
 
 
 def build_final_prompt(doc_prompts: List[str], q_prompt: str) -> str:
-    """构造最终问答 prompt。"""
     return build_prefix_prompt(doc_prompts) + q_prompt
-
-
-def warm_chunk_checkpoints(engine: InferenceEngine, kv_cache: KVCacheManager,
-                           base_session_id: str,
-                           doc_prompts: List[str]) -> List[str]:
-    """按 chunk 边界建立 checkpoint：ckpt-1, ckpt-2, ..."""
-    checkpoint_ids = []
-    for i in range(1, len(doc_prompts) + 1):
-        checkpoint_id = f"{base_session_id}-ckpt-{i}"
-        kv_cache.clear(checkpoint_id)
-        checkpoint_prompt = build_prefix_prompt(doc_prompts[:i])
-        warm_req = GenerateRequest(
-            session_id=checkpoint_id,
-            prompt=checkpoint_prompt,
-            max_new_tokens=0,
-            temperature=0.0,
-            top_p=1.0,
-            use_cache=True,
-            recompute_strategy="none",
-        )
-        engine.generate(warm_req)
-        checkpoint_ids.append(checkpoint_id)
-    return checkpoint_ids
-
-
-def select_best_checkpoint(kv_cache: KVCacheManager, model_runner: HFModelRunner,
-                           checkpoint_ids: List[str],
-                           target_prompt: str) -> Tuple[Optional[str], int]:
-    """从 checkpoints 中选最长前缀匹配项。"""
-    target_tokens = model_runner.encode(target_prompt)
-    best_id = None
-    best_len = -1
-    for sid in checkpoint_ids:
-        entry = kv_cache.get(sid)
-        if entry is None:
-            continue
-        cur_len = len(entry.token_ids)
-        if cur_len <= len(target_tokens) and target_tokens[:cur_len] == entry.token_ids:
-            if cur_len > best_len:
-                best_id = sid
-                best_len = cur_len
-    return best_id, best_len
-
-
-def seed_session_from_checkpoint(kv_cache: KVCacheManager, src_session_id: str,
-                                 dst_session_id: str) -> bool:
-    """将 checkpoint KV 复制到运行 session。"""
-    src = kv_cache.get(src_session_id)
-    if src is None:
-        return False
-    kv_cache.clear(dst_session_id)
-    kv_cache.put(
-        dst_session_id,
-        list(src.token_ids),
-        src.past_key_values,
-        next_token_logits=src.next_token_logits,
-    )
-    return True
-
-
-def warm_prompt_cache(engine: InferenceEngine, kv_cache: KVCacheManager,
-                      session_id: str, prompt: str):
-    """将完整 prompt 预填充到指定会话（max_new_tokens=0）。"""
-    kv_cache.clear(session_id)
-    warm_req = GenerateRequest(
-        session_id=session_id,
-        prompt=prompt,
-        max_new_tokens=0,
-        temperature=0.0,
-        top_p=1.0,
-        use_cache=True,
-        recompute_strategy="none",
-    )
-    return engine.generate(warm_req)
 
 
 def build_chunk_request(session_id: str, doc_prompts: List[str], q_prompt: str,
@@ -156,7 +84,7 @@ def build_chunk_request(session_id: str, doc_prompts: List[str], q_prompt: str,
         prefix_text=PREFIX_PROMPT,
         chunk_texts=doc_prompts,
         suffix_text=q_prompt,
-        chunk_namespace="musique",
+        chunk_namespace="samsum",
     )
 
 
@@ -177,9 +105,13 @@ def warm_chunk_cache(engine: InferenceEngine, doc_prompts: List[str],
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="MusiQue 对比实验脚本")
-    parser.add_argument("--count", type=int, default=30, help="最多评测样本数")
-    parser.add_argument("--qaw-ratio", type=float, default=0.7, help="query-aware 重算比例")
+    parser = argparse.ArgumentParser(description="SAMSum chunk-cache 对比实验脚本")
+    parser.add_argument("--model-name",
+                        type=str,
+                        default="",
+                        help="显式指定模型路径/名称；未传时回退 MODEL_NAME")
+    parser.add_argument("--count", type=int, default=100, help="最多评测样本数")
+    parser.add_argument("--qaw-ratio", type=float, default=0.7, help="QAW chunk token 重算比例")
     parser.add_argument("--output-dir",
                         type=str,
                         default=os.path.join(ROOT_DIR, "outputs"),
@@ -190,10 +122,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     cfg = RuntimeConfig()
-    cfg.max_new_tokens = 32
+    if args.model_name.strip():
+        cfg.model_name = args.model_name.strip()
+    cfg.max_new_tokens = 64
 
-    # 按需求：脚本不向终端输出，统一写入 outputs/*.output。
-    logger = setup_logger("blend_musique", cfg.log_level)
+    logger = setup_logger("blend_samsum", cfg.log_level)
     logger.disabled = True
 
     model_runner = HFModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
@@ -201,11 +134,11 @@ def main() -> None:
     kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger, cfg.kv_max_chunks)
     engine = InferenceEngine(model_runner, kv_cache, logger)
 
-    output_writer = ExperimentOutputWriter.create(args.output_dir, run_tag="musique")
+    output_writer = ExperimentOutputWriter.create(args.output_dir, run_tag="samsum")
     output_writer.append_json({
         "event": "run_start",
-        "script": "example/blend_musique.py",
-        "dataset": "inputs/musique_s.json",
+        "script": "example/blend_samsum.py",
+        "dataset": "inputs/samsum.json",
         "started_at": utc8_now_str(),
         "model": cfg.model_name,
         "max_new_tokens": cfg.max_new_tokens,
@@ -213,9 +146,10 @@ def main() -> None:
         "top_p": cfg.top_p,
         "count": args.count,
         "qaw_ratio": args.qaw_ratio,
+        "metric": "rougeL",
     })
 
-    dataset_path = os.path.join(ROOT_DIR, "inputs", "musique_s.json")
+    dataset_path = os.path.join(ROOT_DIR, "inputs", "samsum.json")
     with open(dataset_path, "r", encoding="utf-8") as f:
         eval_dataset = json.load(f)
 
@@ -225,28 +159,23 @@ def main() -> None:
     qaw_total_list: List[float] = []
     base_total_list: List[float] = []
     reuse_total_list: List[float] = []
-    qaw_f1_list: List[float] = []
-    base_f1_list: List[float] = []
-    reuse_f1_list: List[float] = []
+    qaw_rl_list: List[float] = []
+    base_rl_list: List[float] = []
+    reuse_rl_list: List[float] = []
     qaw_true_recompute_count = 0
 
-    # 单样本流程固定为：
-    # 1) full_prefill 基线
-    # 2) full_reuse（同 prompt 的完全缓存复用）
-    # 3) query_aware（基于旧缓存的选择性重算）
     count = 0
     for sample_idx, ex in enumerate(eval_dataset, start=1):
         count += 1
-        answers = ex.get("answers", [])
-        doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
-        query_text = normalize_question(ex.get("question", ""))
-        final_prompt = build_final_prompt(doc_prompts, q_prompt)
-        warm_res = warm_chunk_cache(engine, doc_prompts, q_prompt, query_text, cfg,
-                                   f"musique-warm-chunks-{sample_idx}")
+        answers = list(ex.get("answers", []))
+        doc_prompts, q_prompt = build_fewshot_prompt(ex)
+        query_text = (ex.get("question", "") or "").strip()
 
-        # 方法 1：基线（关闭缓存，完整 prefill）。
+        warm_res = warm_chunk_cache(engine, doc_prompts, q_prompt, query_text, cfg,
+                                   f"samsum-warm-chunks-{sample_idx}")
+
         base_req = build_chunk_request(
-            session_id=f"musique-baseline-{sample_idx}",
+            session_id=f"samsum-baseline-{sample_idx}",
             doc_prompts=doc_prompts,
             q_prompt=q_prompt,
             query_text=query_text,
@@ -256,9 +185,8 @@ def main() -> None:
         )
         base_res = engine.generate(base_req)
 
-        # 方法 2：full reuse（直接拼接 chunk KV，不做选择性重算）。
         reuse_req = build_chunk_request(
-            session_id=f"musique-reuse-{sample_idx}",
+            session_id=f"samsum-reuse-{sample_idx}",
             doc_prompts=doc_prompts,
             q_prompt=q_prompt,
             query_text=query_text,
@@ -268,9 +196,8 @@ def main() -> None:
         )
         reuse_res = engine.generate(reuse_req)
 
-        # 方法 3：query-aware（基于 chunk KV 选择性更新 chunk token）。
         qaw_req = build_chunk_request(
-            session_id=f"musique-qaw-{sample_idx}",
+            session_id=f"samsum-qaw-{sample_idx}",
             doc_prompts=doc_prompts,
             q_prompt=q_prompt,
             query_text=query_text,
@@ -281,8 +208,9 @@ def main() -> None:
         )
         qaw_res = engine.generate(qaw_req)
 
-        qaw_true_recompute = (qaw_res.recompute_mode == "chunk_query_aware_recompute"
-                              and qaw_res.recomputed_tokens > 0)
+        qaw_true_recompute = (
+            qaw_res.recompute_mode == "chunk_query_aware_recompute"
+            and qaw_res.recomputed_tokens > 0)
         if qaw_true_recompute:
             qaw_true_recompute_count += 1
 
@@ -293,26 +221,20 @@ def main() -> None:
         qaw_total_list.append(qaw_res.total_latency_s)
         base_total_list.append(base_res.total_latency_s)
 
-        reuse_f1 = max([compute_f1(reuse_res.generated_text, a, model_runner.tokenizer)
-                        for a in answers]) if answers else None
-        qaw_f1 = max([compute_f1(qaw_res.generated_text, a, model_runner.tokenizer)
-                      for a in answers]) if answers else None
-        base_f1 = max([compute_f1(base_res.generated_text, a, model_runner.tokenizer)
-                       for a in answers]) if answers else None
-        if reuse_f1 is not None:
-            reuse_f1_list.append(reuse_f1)
-        if qaw_f1 is not None:
-            qaw_f1_list.append(qaw_f1)
-        if base_f1 is not None:
-            base_f1_list.append(base_f1)
+        reuse_rl = _safe_max_rougel(reuse_res.generated_text, answers)
+        qaw_rl = _safe_max_rougel(qaw_res.generated_text, answers)
+        base_rl = _safe_max_rougel(base_res.generated_text, answers)
+        if reuse_rl is not None:
+            reuse_rl_list.append(reuse_rl)
+        if qaw_rl is not None:
+            qaw_rl_list.append(qaw_rl)
+        if base_rl is not None:
+            base_rl_list.append(base_rl)
 
-        # sample_result 保留逐样本的完整对照信息，便于后续人工检查
-        # 某条样本为何变快、变慢或质量下降。
         output_writer.append_json({
             "event": "sample_result",
             "sample_idx": sample_idx,
             "chunk_num": len(doc_prompts),
-            "question": ex.get("question", ""),
             "answers": answers,
             "warm_chunk_count": warm_res.chunk_count,
             "warm_chunk_cache_hits": warm_res.chunk_cache_hits,
@@ -325,7 +247,7 @@ def main() -> None:
                 "chunk_cache_hits": reuse_res.chunk_cache_hits,
                 "chunk_cache_misses": reuse_res.chunk_cache_misses,
                 "recompute_mode": reuse_res.recompute_mode,
-                "f1": reuse_f1,
+                "rougeL": reuse_rl,
             },
             "query_aware": {
                 "generated_text": qaw_res.generated_text,
@@ -337,23 +259,20 @@ def main() -> None:
                 "chunk_cache_misses": qaw_res.chunk_cache_misses,
                 "recompute_mode": qaw_res.recompute_mode,
                 "true_recompute": qaw_true_recompute,
-                "f1": qaw_f1,
+                "rougeL": qaw_rl,
             },
             "full_prefill": {
                 "generated_text": base_res.generated_text,
                 "ttft_s": base_res.first_token_latency_s,
                 "total_s": base_res.total_latency_s,
-                "f1": base_f1,
+                "rougeL": base_rl,
             },
         })
         if count >= args.count:
             break
 
-    # run_summary 只保留整次实验的平均指标与重算计数，
-    # 方便直接做表格或与其他脚本结果对比。
     output_writer.append_json({
         "event": "run_summary",
-        # "sample_count": len(eval_dataset),
         "sample_count": count,
         "full_reuse_avg_ttft_s": _mean(reuse_ttft_list),
         "query_aware_avg_ttft_s": _mean(qaw_ttft_list),
@@ -361,9 +280,9 @@ def main() -> None:
         "full_reuse_avg_total_s": _mean(reuse_total_list),
         "query_aware_avg_total_s": _mean(qaw_total_list),
         "full_prefill_avg_total_s": _mean(base_total_list),
-        "full_reuse_avg_f1": _mean(reuse_f1_list),
-        "query_aware_avg_f1": _mean(qaw_f1_list),
-        "full_prefill_avg_f1": _mean(base_f1_list),
+        "full_reuse_avg_rougeL": _mean(reuse_rl_list),
+        "query_aware_avg_rougeL": _mean(qaw_rl_list),
+        "full_prefill_avg_rougeL": _mean(base_rl_list),
         "qaw_true_recompute_count": qaw_true_recompute_count,
         "ended_at": utc8_now_str(),
     })

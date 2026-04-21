@@ -1,4 +1,4 @@
-"""QAW ratio 曲线实验：固定 suffix_len=32，支持 MusiQue / WikiMQA / CMRC"""
+"""QAW ratio 曲线实验：支持 MusiQue / WikiMQA / CMRC / SAMSum。"""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from blend_curve_common import DATASET_SPECS, build_run_summary_payload, evaluat
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="QAW ratio curve（固定 suffix_len=32）")
+        description="QAW ratio curve（chunk-cache，无 suffix_len 主参数）")
     parser.add_argument("--dataset",
                         choices=sorted(DATASET_SPECS.keys()),
                         default="musique")
@@ -36,7 +36,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--qaw-ratio-min", type=float, default=0.0)
     parser.add_argument("--qaw-ratio-max", type=float, default=1.0)
     parser.add_argument("--qaw-ratio-step", type=float, default=0.05)
-    parser.add_argument("--suffix-len", type=int, default=32)
+    parser.add_argument("--suffix-len",
+                        type=int,
+                        default=0,
+                        help="legacy 参数；chunk-cache QAW 主线不再使用")
     parser.add_argument("--max-new-tokens", type=int, default=32)
     parser.add_argument("--output-dir",
                         type=str,
@@ -83,7 +86,7 @@ def main() -> None:
         "qaw_ratio_min": args.qaw_ratio_min,
         "qaw_ratio_max": args.qaw_ratio_max,
         "qaw_ratio_step": args.qaw_ratio_step,
-        "suffix_len": args.suffix_len,
+        "suffix_len": 0,
         "ratio_group_count": len(ratios),
         "curve_mode": "ratio_only",
         "kvd_enabled": False,
@@ -107,7 +110,7 @@ def main() -> None:
         logger=logger,
         sample_limit=sample_limit,
         ratio_values=ratios,
-        suffix_values=[args.suffix_len],
+        suffix_values=[0],
     )
 
     total_groups = len(ratios)
@@ -115,16 +118,16 @@ def main() -> None:
         payload = build_run_summary_payload(
             processed_samples=processed_samples,
             baseline_stats=baseline_stats,
-            grid_bucket=metrics[(recomp_ratio, args.suffix_len)],
+            grid_bucket=metrics[(recomp_ratio, 0)],
             recomp_ratio=recomp_ratio,
-            suffix_len=args.suffix_len,
+            suffix_len=0,
         )
         payload["ended_at"] = utc8_now_str()
         output_writer.append_json(payload)
         print(
             f"[curve] 组完成 {group_idx}/{total_groups}, "
             f"run_summary 已写入, recomp_ratio={recomp_ratio:.2f}, "
-            f"suffix_len={args.suffix_len}",
+            "suffix_len=0(ignored)",
             flush=True,
         )
 

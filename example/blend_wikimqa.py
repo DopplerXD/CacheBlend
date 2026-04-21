@@ -78,14 +78,6 @@ def build_final_prompt(doc_prompts: List[str], q_prompt: str) -> str:
     return build_prefix_prompt(doc_prompts) + q_prompt
 
 
-def build_stale_prompt(doc_prompts: List[str], query_text: str) -> str:
-    """构造非前缀旧缓存 prompt，强制触发重算路径。"""
-    stale_q_prompt = (
-        f"{QUERY_PROMPT} Placeholder cache-warm question: {query_text}\nAnswer:"
-    )
-    return build_final_prompt(doc_prompts, stale_q_prompt)
-
-
 def warm_chunk_checkpoints(engine: InferenceEngine, kv_cache: KVCacheManager,
                            base_session_id: str,
                            doc_prompts: List[str]) -> List[str]:
@@ -160,6 +152,45 @@ def warm_prompt_cache(engine: InferenceEngine, kv_cache: KVCacheManager,
     return engine.generate(warm_req)
 
 
+def build_chunk_request(session_id: str, doc_prompts: List[str], q_prompt: str,
+                        query_text: str, cfg: RuntimeConfig, use_cache: bool,
+                        recompute_strategy: str,
+                        recomp_ratio: float = 0.0,
+                        max_new_tokens: Optional[int] = None) -> GenerateRequest:
+    final_prompt = build_final_prompt(doc_prompts, q_prompt)
+    return GenerateRequest(
+        session_id=session_id,
+        prompt=final_prompt,
+        max_new_tokens=cfg.max_new_tokens if max_new_tokens is None else max_new_tokens,
+        temperature=cfg.temperature,
+        top_p=cfg.top_p,
+        use_cache=use_cache,
+        recompute_strategy=recompute_strategy,
+        recomp_ratio=recomp_ratio,
+        query_text=query_text,
+        prefix_text=PREFIX_PROMPT,
+        chunk_texts=doc_prompts,
+        suffix_text=q_prompt,
+        chunk_namespace="wikimqa",
+    )
+
+
+def warm_chunk_cache(engine: InferenceEngine, doc_prompts: List[str],
+                     q_prompt: str, query_text: str, cfg: RuntimeConfig,
+                     session_id: str):
+    warm_req = build_chunk_request(
+        session_id=session_id,
+        doc_prompts=doc_prompts,
+        q_prompt=q_prompt,
+        query_text=query_text,
+        cfg=cfg,
+        use_cache=True,
+        recompute_strategy="none",
+        max_new_tokens=0,
+    )
+    return engine.generate(warm_req)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="WikiMQA 对比实验脚本")
     parser.add_argument("--count", type=int, default=10, help="最多评测样本数")
@@ -182,7 +213,7 @@ def main() -> None:
 
     model_runner = HFModelRunner(cfg.model_name, cfg.device, cfg.model_dtype,
                                  logger)
-    kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger)
+    kv_cache = KVCacheManager(cfg.kv_max_sessions, cfg.kv_ttl_seconds, logger, cfg.kv_max_chunks)
     engine = InferenceEngine(model_runner, kv_cache, logger)
 
     output_writer = ExperimentOutputWriter.create(args.output_dir, run_tag="wikimqa")
@@ -203,19 +234,15 @@ def main() -> None:
     with open(dataset_path, "r", encoding="utf-8") as f:
         eval_dataset = json.load(f)
 
-    kvd_ttft_list: List[float] = []
     qaw_ttft_list: List[float] = []
     base_ttft_list: List[float] = []
     reuse_ttft_list: List[float] = []
-    kvd_total_list: List[float] = []
     qaw_total_list: List[float] = []
     base_total_list: List[float] = []
     reuse_total_list: List[float] = []
-    kvd_f1_list: List[float] = []
     qaw_f1_list: List[float] = []
     base_f1_list: List[float] = []
     reuse_f1_list: List[float] = []
-    kvd_true_recompute_count = 0
     qaw_true_recompute_count = 0
 
     count = 0
@@ -225,103 +252,65 @@ def main() -> None:
         doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
         query_text = normalize_question(ex.get("question", ""))
         final_prompt = build_final_prompt(doc_prompts, q_prompt)
-        stale_prompt = build_stale_prompt(doc_prompts, query_text)
+        warm_res = warm_chunk_cache(engine, doc_prompts, q_prompt, query_text, cfg,
+                                   f"wikimqa-warm-chunks-{sample_idx}")
 
-        # 方法 1：full reuse（完整 KV 复用，与 full prefill 相对）。
-        reuse_template_id = f"wikimqa-reuse-template-{sample_idx}"
-        warm_prompt_cache(engine, kv_cache, reuse_template_id, final_prompt)
-        reuse_session_id = f"wikimqa-reuse-{sample_idx}"
-        seed_session_from_checkpoint(kv_cache, reuse_template_id, reuse_session_id)
-        reuse_req = GenerateRequest(
-            session_id=reuse_session_id,
-            prompt=final_prompt,
-            max_new_tokens=cfg.max_new_tokens,
-            temperature=cfg.temperature,
-            top_p=cfg.top_p,
+        # 方法 1：full reuse（直接拼接 chunk KV，不做选择性重算）。
+        reuse_req = build_chunk_request(
+            session_id=f"wikimqa-reuse-{sample_idx}",
+            doc_prompts=doc_prompts,
+            q_prompt=q_prompt,
+            query_text=query_text,
+            cfg=cfg,
             use_cache=True,
             recompute_strategy="none",
         )
         reuse_res = engine.generate(reuse_req)
 
-        stale_template_id = f"wikimqa-stale-template-{sample_idx}"
-        stale_warm_res = warm_prompt_cache(engine, kv_cache, stale_template_id,
-                                           stale_prompt)
-
-        # 方法 2：高 KV 偏差重算。
-        kvd_session_id = f"wikimqa-kvd-{sample_idx}"
-        seed_session_from_checkpoint(kv_cache, stale_template_id, kvd_session_id)
-        kvd_req = GenerateRequest(
-            session_id=kvd_session_id,
-            prompt=final_prompt,
-            max_new_tokens=cfg.max_new_tokens,
-            temperature=cfg.temperature,
-            top_p=cfg.top_p,
-            use_cache=True,
-            recompute_strategy="kv_diff",
-            recomp_ratio=0.16,
-            suffix_len=32,
+        # 方法 2：Query-aware 重算。
+        qaw_req = build_chunk_request(
+            session_id=f"wikimqa-qaw-{sample_idx}",
+            doc_prompts=doc_prompts,
+            q_prompt=q_prompt,
             query_text=query_text,
-        )
-        kvd_res = engine.generate(kvd_req)
-
-        # 方法 3：Query-aware 重算。
-        qaw_session_id = f"wikimqa-qaw-{sample_idx}"
-        seed_session_from_checkpoint(kv_cache, stale_template_id, qaw_session_id)
-        qaw_req = GenerateRequest(
-            session_id=qaw_session_id,
-            prompt=final_prompt,
-            max_new_tokens=cfg.max_new_tokens,
-            temperature=cfg.temperature,
-            top_p=cfg.top_p,
+            cfg=cfg,
             use_cache=True,
             recompute_strategy="query_aware",
             recomp_ratio=args.qaw_ratio,
-            suffix_len=32,
-            query_text=query_text,
         )
         qaw_res = engine.generate(qaw_req)
 
-        # 方法 4：基线（关闭缓存，完整 prefill）。
-        base_req = GenerateRequest(
+        # 方法 3：基线（关闭缓存，完整 prefill）。
+        base_req = build_chunk_request(
             session_id=f"wikimqa-baseline-{sample_idx}",
-            prompt=final_prompt,
-            max_new_tokens=cfg.max_new_tokens,
-            temperature=cfg.temperature,
-            top_p=cfg.top_p,
+            doc_prompts=doc_prompts,
+            q_prompt=q_prompt,
+            query_text=query_text,
+            cfg=cfg,
             use_cache=False,
             recompute_strategy="none",
         )
         base_res = engine.generate(base_req)
-        kvd_true_recompute = (kvd_res.recompute_mode == "kv_diff_recompute"
-                              and kvd_res.recomputed_tokens > 0)
-        qaw_true_recompute = (qaw_res.recompute_mode == "query_aware_recompute"
+        qaw_true_recompute = (qaw_res.recompute_mode == "chunk_query_aware_recompute"
                               and qaw_res.recomputed_tokens > 0)
-        if kvd_true_recompute:
-            kvd_true_recompute_count += 1
         if qaw_true_recompute:
             qaw_true_recompute_count += 1
 
         reuse_ttft_list.append(reuse_res.first_token_latency_s)
-        kvd_ttft_list.append(kvd_res.first_token_latency_s)
         qaw_ttft_list.append(qaw_res.first_token_latency_s)
         base_ttft_list.append(base_res.first_token_latency_s)
         reuse_total_list.append(reuse_res.total_latency_s)
-        kvd_total_list.append(kvd_res.total_latency_s)
         qaw_total_list.append(qaw_res.total_latency_s)
         base_total_list.append(base_res.total_latency_s)
 
         reuse_f1 = max([compute_f1(reuse_res.generated_text, a, model_runner.tokenizer)
                         for a in answer_texts]) if answer_texts else None
-        kvd_f1 = max([compute_f1(kvd_res.generated_text, a, model_runner.tokenizer)
-                      for a in answer_texts]) if answer_texts else None
         qaw_f1 = max([compute_f1(qaw_res.generated_text, a, model_runner.tokenizer)
                       for a in answer_texts]) if answer_texts else None
         base_f1 = max([compute_f1(base_res.generated_text, a, model_runner.tokenizer)
                        for a in answer_texts]) if answer_texts else None
         if reuse_f1 is not None:
             reuse_f1_list.append(reuse_f1)
-        if kvd_f1 is not None:
-            kvd_f1_list.append(kvd_f1)
         if qaw_f1 is not None:
             qaw_f1_list.append(qaw_f1)
         if base_f1 is not None:
@@ -333,24 +322,18 @@ def main() -> None:
             "chunk_num": len(doc_prompts),
             "question": ex.get("question", ""),
             "answers": answer_texts,
-            "stale_cache_prompt_tokens": stale_warm_res.prompt_tokens,
+            "warm_chunk_count": warm_res.chunk_count,
+            "warm_chunk_cache_hits": warm_res.chunk_cache_hits,
+            "warm_chunk_cache_misses": warm_res.chunk_cache_misses,
             "full_reuse": {
                 "generated_text": reuse_res.generated_text,
                 "ttft_s": reuse_res.first_token_latency_s,
                 "total_s": reuse_res.total_latency_s,
                 "reused_prefix_tokens": reuse_res.reused_prefix_tokens,
+                "chunk_cache_hits": reuse_res.chunk_cache_hits,
+                "chunk_cache_misses": reuse_res.chunk_cache_misses,
                 "recompute_mode": reuse_res.recompute_mode,
                 "f1": reuse_f1,
-            },
-            "kv_diff": {
-                "generated_text": kvd_res.generated_text,
-                "ttft_s": kvd_res.first_token_latency_s,
-                "total_s": kvd_res.total_latency_s,
-                "reused_prefix_tokens": kvd_res.reused_prefix_tokens,
-                "recomputed_tokens": kvd_res.recomputed_tokens,
-                "recompute_mode": kvd_res.recompute_mode,
-                "true_recompute": kvd_true_recompute,
-                "f1": kvd_f1,
             },
             "query_aware": {
                 "generated_text": qaw_res.generated_text,
@@ -358,6 +341,8 @@ def main() -> None:
                 "total_s": qaw_res.total_latency_s,
                 "reused_prefix_tokens": qaw_res.reused_prefix_tokens,
                 "recomputed_tokens": qaw_res.recomputed_tokens,
+                "chunk_cache_hits": qaw_res.chunk_cache_hits,
+                "chunk_cache_misses": qaw_res.chunk_cache_misses,
                 "recompute_mode": qaw_res.recompute_mode,
                 "true_recompute": qaw_true_recompute,
                 "f1": qaw_f1,
@@ -377,18 +362,14 @@ def main() -> None:
         # "sample_count": len(eval_dataset),
         "sample_count": count,
         "full_reuse_avg_ttft_s": _mean(reuse_ttft_list),
-        "kv_diff_avg_ttft_s": _mean(kvd_ttft_list),
         "query_aware_avg_ttft_s": _mean(qaw_ttft_list),
         "full_prefill_avg_ttft_s": _mean(base_ttft_list),
         "full_reuse_avg_total_s": _mean(reuse_total_list),
-        "kv_diff_avg_total_s": _mean(kvd_total_list),
         "query_aware_avg_total_s": _mean(qaw_total_list),
         "full_prefill_avg_total_s": _mean(base_total_list),
         "full_reuse_avg_f1": _mean(reuse_f1_list),
-        "kv_diff_avg_f1": _mean(kvd_f1_list),
         "query_aware_avg_f1": _mean(qaw_f1_list),
         "full_prefill_avg_f1": _mean(base_f1_list),
-        "kvd_true_recompute_count": kvd_true_recompute_count,
         "qaw_true_recompute_count": qaw_true_recompute_count,
         "ended_at": utc8_now_str(),
     })
