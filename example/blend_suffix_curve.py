@@ -87,7 +87,6 @@ def main() -> None:
         "suffix_len_step": args.suffix_len_step,
         "suffix_group_count": len(suffix_values),
         "curve_mode": "suffix_only",
-        "kvd_enabled": False,
     })
 
     sample_limit = min(len(eval_dataset), args.count)

@@ -94,7 +94,6 @@ def main() -> None:
         "suffix_group_count": len(suffix_values),
         "grid_group_count": len(ratios) * len(suffix_values),
         "curve_mode": "ratio_suffix_grid",
-        "kvd_enabled": False,
     })
 
     sample_limit = min(len(eval_dataset), args.count)

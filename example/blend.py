@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import logging
 import os
 import sys
 from typing import List, Optional
+
+import torch
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
@@ -137,6 +140,7 @@ def main() -> None:
         doc_prompts = [ex[str(i)] for i in range(chunk_num)]
         query_text = ex["query"]
 
+        kv_cache.clear_chunks("blend_demo")
         warm_res = warm_chunk_cache(engine, doc_prompts, query_text, cfg,
                                    f"blend-warm-chunks-{sample_idx}")
 
@@ -203,6 +207,10 @@ def main() -> None:
                 "chunk_cache_misses": qaw_res.chunk_cache_misses,
             },
         })
+        kv_cache.clear_chunks("blend_demo")
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     output_writer.append_json({
         "event": "run_summary",

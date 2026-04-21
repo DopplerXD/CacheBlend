@@ -89,7 +89,6 @@ def main() -> None:
         "suffix_len": 0,
         "ratio_group_count": len(ratios),
         "curve_mode": "ratio_only",
-        "kvd_enabled": False,
     })
 
     sample_limit = min(len(eval_dataset), args.count)

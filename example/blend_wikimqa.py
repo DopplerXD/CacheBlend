@@ -1,11 +1,14 @@
 """WikiMQA 实验脚本：三种策略对比（仅落盘日志，不向终端输出）。"""
 
 import argparse
+import gc
 import importlib.util
 import json
 import os
 import sys
 from typing import List, Optional, Tuple
+
+import torch
 
 # 允许从项目根目录导入模块（保持 `python example/blend_wikimqa.py` 可直接运行）。
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -252,6 +255,7 @@ def main() -> None:
         doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
         query_text = normalize_question(ex.get("question", ""))
         final_prompt = build_final_prompt(doc_prompts, q_prompt)
+        kv_cache.clear_chunks("wikimqa")
         warm_res = warm_chunk_cache(engine, doc_prompts, q_prompt, query_text, cfg,
                                    f"wikimqa-warm-chunks-{sample_idx}")
 
@@ -354,6 +358,10 @@ def main() -> None:
                 "f1": base_f1,
             },
         })
+        kv_cache.clear_chunks("wikimqa")
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         if count >= args.count:
             break
 

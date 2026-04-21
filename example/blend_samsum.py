@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import importlib.util
 import json
 import os
 import sys
 from typing import List, Optional
+
+import torch
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
@@ -171,6 +174,7 @@ def main() -> None:
         doc_prompts, q_prompt = build_fewshot_prompt(ex)
         query_text = (ex.get("question", "") or "").strip()
 
+        kv_cache.clear_chunks("samsum")
         warm_res = warm_chunk_cache(engine, doc_prompts, q_prompt, query_text, cfg,
                                    f"samsum-warm-chunks-{sample_idx}")
 
@@ -268,6 +272,10 @@ def main() -> None:
                 "rougeL": base_rl,
             },
         })
+        kv_cache.clear_chunks("samsum")
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         if count >= args.count:
             break
 
