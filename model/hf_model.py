@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, List, Optional, Sequence, Tuple
 
 import torch
@@ -50,6 +51,8 @@ class HFModelRunner:
         )
         self.model.to(self.device)
         self.model.eval()
+        self._supports_num_logits_to_keep = (
+            "num_logits_to_keep" in inspect.signature(self.model.forward).parameters)
 
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -218,12 +221,18 @@ class HFModelRunner:
                                            dtype=torch.long,
                                            device=self.device)
 
-        outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_tensor,
-            past_key_values=past_key_values,
-            use_cache=True,
-            return_dict=True,
-        )
+        model_kwargs = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "position_ids": position_tensor,
+            "past_key_values": past_key_values,
+            "use_cache": True,
+            "return_dict": True,
+        }
+        if self._supports_num_logits_to_keep:
+            # 生成只需要最后一个位置的 logits。长 prompt full prefill 时，
+            # 避免 materialize [seq_len, vocab] 的完整 logits 以降低显存峰值。
+            model_kwargs["num_logits_to_keep"] = 1
+
+        outputs = self.model(**model_kwargs)
         return outputs.logits, outputs.past_key_values

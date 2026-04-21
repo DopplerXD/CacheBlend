@@ -280,6 +280,7 @@ def cleanup_runtime(kv_cache: Optional[KVCacheManager],
                     engine: Optional[InferenceEngine]) -> None:
     if kv_cache is not None:
         kv_cache._store.clear()  # pylint: disable=protected-access
+        kv_cache._chunk_store.clear()  # pylint: disable=protected-access
     del engine
     del kv_cache
     gc.collect()

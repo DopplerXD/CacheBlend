@@ -1,11 +1,14 @@
 """MusiQue 实验脚本：比较 full_prefill、full_reuse、query_aware 三种路径。"""
 
 import argparse
+import gc
 import json
 import os
 import sys
 import importlib.util
 from typing import List, Optional, Tuple
+
+import torch
 
 # 允许从项目根目录导入模块（保持 `python example/blend_musique.py` 可直接运行）。
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -241,6 +244,7 @@ def main() -> None:
         doc_prompts, q_prompt = build_qa_prompt(ex, QUERY_PROMPT)
         query_text = normalize_question(ex.get("question", ""))
         final_prompt = build_final_prompt(doc_prompts, q_prompt)
+        kv_cache.clear_chunks("musique")
         warm_res = warm_chunk_cache(engine, doc_prompts, q_prompt, query_text, cfg,
                                    f"musique-warm-chunks-{sample_idx}")
 
@@ -346,6 +350,10 @@ def main() -> None:
                 "f1": base_f1,
             },
         })
+        kv_cache.clear_chunks("musique")
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         if count >= args.count:
             break
 
