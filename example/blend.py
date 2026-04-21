@@ -46,6 +46,7 @@ def build_chunk_request(session_id: str, doc_prompts: List[str], query_text: str
                         cfg: RuntimeConfig, use_cache: bool,
                         recompute_strategy: str,
                         recomp_ratio: float = 0.0,
+                        qaw_type: str = "packed",
                         max_new_tokens: Optional[int] = None) -> GenerateRequest:
     return GenerateRequest(
         session_id=session_id,
@@ -56,6 +57,7 @@ def build_chunk_request(session_id: str, doc_prompts: List[str], query_text: str
         use_cache=use_cache,
         recompute_strategy=recompute_strategy,
         recomp_ratio=recomp_ratio,
+        qaw_type=qaw_type,
         query_text=query_text,
         prefix_text=PREFIX_PROMPT,
         chunk_texts=doc_prompts,
@@ -86,6 +88,9 @@ def parse_args() -> argparse.Namespace:
                         help="显式指定模型路径/名称；未传时回退 MODEL_NAME")
     parser.add_argument("--count", type=int, default=10)
     parser.add_argument("--qaw-ratio", type=float, default=0.5)
+    parser.add_argument("--qaw-type",
+                        choices=["packed", "window"],
+                        default="packed")
     return parser.parse_args()
 
 
@@ -123,6 +128,7 @@ def main() -> None:
         "model": cfg.model_name,
         "max_new_tokens": cfg.max_new_tokens,
         "qaw_ratio": args.qaw_ratio,
+        "qaw_type": args.qaw_type,
     })
 
     reuse_ttft_list: List[float] = []
@@ -171,6 +177,7 @@ def main() -> None:
                 use_cache=True,
                 recompute_strategy="query_aware",
                 recomp_ratio=args.qaw_ratio,
+                qaw_type=args.qaw_type,
             ))
 
         reuse_ttft_list.append(reuse_res.first_token_latency_s)

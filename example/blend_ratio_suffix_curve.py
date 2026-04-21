@@ -36,6 +36,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--qaw-ratio-min", type=float, default=0.45)
     parser.add_argument("--qaw-ratio-max", type=float, default=0.80)
     parser.add_argument("--qaw-ratio-step", type=float, default=0.05)
+    parser.add_argument("--qaw-type",
+                        choices=["packed", "window"],
+                        default="packed",
+                        help="QAW 重算方式：packed 为原实现，window 为左侧16token窗口重算")
     parser.add_argument("--suffix-len-min", type=int, default=0)
     parser.add_argument("--suffix-len-max", type=int, default=32)
     parser.add_argument("--suffix-len-step", type=int, default=8)
@@ -87,6 +91,7 @@ def main() -> None:
         "qaw_ratio_min": args.qaw_ratio_min,
         "qaw_ratio_max": args.qaw_ratio_max,
         "qaw_ratio_step": args.qaw_ratio_step,
+        "qaw_type": args.qaw_type,
         "suffix_len_min": args.suffix_len_min,
         "suffix_len_max": args.suffix_len_max,
         "suffix_len_step": args.suffix_len_step,
@@ -115,6 +120,7 @@ def main() -> None:
         sample_limit=sample_limit,
         ratio_values=ratios,
         suffix_values=suffix_values,
+        qaw_type=args.qaw_type,
     )
 
     total_groups = len(ratios) * len(suffix_values)

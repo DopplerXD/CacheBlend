@@ -79,6 +79,11 @@ prefix KV + rebased chunk_1 KV + ... + rebased chunk_n KV
 
 当前 QAW 仍是纯 Transformers 原型中的近似重算：selected token packed prefill 只能访问 packed 序列内部上下文，不等价于内核级稀疏 attention。但它避免了 query-aware 路径先做完整 new KV 预计算。
 
+实现支持两种 QAW 重算执行方式：
+
+- `qaw_type="packed"`：默认路径，只重算被选中的 token，速度更快但上下文近似更强。
+- `qaw_type="window"`：将每个 selected token 扩展为左侧 16 token 的连续窗口，合并重叠窗口后，用完整左侧 KV 作为 past 重算窗口，再 scatter 回完整 KV。该路径通常更稳，但重算 token 数和 TTFT 会增加。
+
 ## 7. 实验口径
 
 - QA 数据集：MusiQue、WikiMQA、CMRC，质量指标为 F1。

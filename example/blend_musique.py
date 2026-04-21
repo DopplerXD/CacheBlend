@@ -144,6 +144,7 @@ def build_chunk_request(session_id: str, doc_prompts: List[str], q_prompt: str,
                         query_text: str, cfg: RuntimeConfig, use_cache: bool,
                         recompute_strategy: str,
                         recomp_ratio: float = 0.0,
+                        qaw_type: str = "packed",
                         max_new_tokens: Optional[int] = None) -> GenerateRequest:
     final_prompt = build_final_prompt(doc_prompts, q_prompt)
     return GenerateRequest(
@@ -155,6 +156,7 @@ def build_chunk_request(session_id: str, doc_prompts: List[str], q_prompt: str,
         use_cache=use_cache,
         recompute_strategy=recompute_strategy,
         recomp_ratio=recomp_ratio,
+        qaw_type=qaw_type,
         query_text=query_text,
         prefix_text=PREFIX_PROMPT,
         chunk_texts=doc_prompts,
@@ -183,6 +185,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="MusiQue 对比实验脚本")
     parser.add_argument("--count", type=int, default=30, help="最多评测样本数")
     parser.add_argument("--qaw-ratio", type=float, default=0.7, help="query-aware 重算比例")
+    parser.add_argument("--qaw-type",
+                        choices=["packed", "window"],
+                        default="packed",
+                        help="QAW 重算方式：packed 为原实现，window 为左侧16token窗口重算")
     parser.add_argument("--output-dir",
                         type=str,
                         default=os.path.join(ROOT_DIR, "outputs"),
@@ -216,6 +222,7 @@ def main() -> None:
         "top_p": cfg.top_p,
         "count": args.count,
         "qaw_ratio": args.qaw_ratio,
+        "qaw_type": args.qaw_type,
     })
 
     dataset_path = os.path.join(ROOT_DIR, "inputs", "musique_s.json")
@@ -282,6 +289,7 @@ def main() -> None:
             use_cache=True,
             recompute_strategy="query_aware",
             recomp_ratio=args.qaw_ratio,
+            qaw_type=args.qaw_type,
         )
         qaw_res = engine.generate(qaw_req)
 

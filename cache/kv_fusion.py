@@ -35,6 +35,18 @@ def clone_past_key_values(past_key_values: Any) -> Any:
     return tuple(cloned)
 
 
+def slice_past_key_values(past_key_values: Any, start_idx: int, end_idx: int) -> Any:
+    """按序列维切出 [start_idx:end_idx) 的 past_key_values。"""
+    if past_key_values is None:
+        return None
+    sliced = []
+    for layer in past_key_values:
+        k, v, *rest = layer
+        sliced.append((k[:, :, start_idx:end_idx, :].clone(),
+                       v[:, :, start_idx:end_idx, :].clone(), *rest))
+    return tuple(sliced)
+
+
 def scatter_selected_past_key_values(base_past_key_values: Any,
                                      selected_past_key_values: Any,
                                      selected_indices: torch.Tensor) -> Any:

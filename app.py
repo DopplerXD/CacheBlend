@@ -36,6 +36,10 @@ def main() -> None:
     parser.add_argument("--kv-diff-recompute", action="store_true")
     parser.add_argument("--recomp-ratio", type=float, default=0.16)
     parser.add_argument("--suffix-len", type=int, default=16)
+    parser.add_argument("--qaw-type",
+                        type=str,
+                        default="packed",
+                        choices=["packed", "window"])
     args = parser.parse_args()
 
     cfg = RuntimeConfig()
@@ -55,6 +59,7 @@ def main() -> None:
         enable_kv_diff_recompute=args.kv_diff_recompute,
         recomp_ratio=args.recomp_ratio,
         suffix_len=args.suffix_len,
+        qaw_type=args.qaw_type,
         query_text=args.query_text,
     )
 

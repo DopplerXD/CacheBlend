@@ -34,6 +34,10 @@ def parse_args() -> argparse.Namespace:
                         help="显式指定模型路径/名称；未传时回退 MODEL_NAME")
     parser.add_argument("--count", type=int, default=50, help="最多评测样本数")
     parser.add_argument("--qaw-ratio", type=float, default=0.7)
+    parser.add_argument("--qaw-type",
+                        choices=["packed", "window"],
+                        default="packed",
+                        help="QAW 重算方式：packed 为原实现，window 为左侧16token窗口重算")
     parser.add_argument("--suffix-len-min", type=int, default=0)
     parser.add_argument("--suffix-len-max", type=int, default=32)
     parser.add_argument("--suffix-len-step", type=int, default=4)
@@ -82,6 +86,7 @@ def main() -> None:
         "top_p": cfg.top_p,
         "count": args.count,
         "qaw_ratio": fixed_ratio,
+        "qaw_type": args.qaw_type,
         "suffix_len_min": args.suffix_len_min,
         "suffix_len_max": args.suffix_len_max,
         "suffix_len_step": args.suffix_len_step,
@@ -108,6 +113,7 @@ def main() -> None:
         sample_limit=sample_limit,
         ratio_values=[fixed_ratio],
         suffix_values=suffix_values,
+        qaw_type=args.qaw_type,
     )
 
     total_groups = len(suffix_values)

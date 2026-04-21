@@ -8,7 +8,11 @@ from typing import Any, List, Tuple
 
 import torch
 
-from cache.kv_fusion import concat_past_key_values, scatter_selected_past_key_values
+from cache.kv_fusion import (
+    concat_past_key_values,
+    scatter_selected_past_key_values,
+    slice_past_key_values,
+)
 from schema.types import GenerateRequest, GenerateResult
 
 
@@ -266,6 +270,18 @@ class InferenceEngine:
         if selected_chunk_indices.numel() == 0:
             return past_key_values, 0
 
+        qaw_type = (req.qaw_type or "packed").lower()
+        if qaw_type == "window":
+            return self._apply_chunk_query_aware_window_recompute(
+                req=req,
+                past_key_values=past_key_values,
+                chunk_token_ids=chunk_token_ids,
+                chunk_global_positions=chunk_global_positions,
+                selected_chunk_indices=selected_chunk_indices,
+            )
+        if qaw_type != "packed":
+            raise ValueError(f"不支持的 qaw_type: {req.qaw_type}")
+
         selected_chunk_list = [int(i) for i in selected_chunk_indices.tolist()]
         selected_token_ids = [chunk_token_ids[i] for i in selected_chunk_list]
         selected_global_positions = [
@@ -288,12 +304,84 @@ class InferenceEngine:
             selected_indices=selected_global_tensor,
         )
         self.logger.info(
-            "chunk query-aware 重算: chunks_tokens=%d selected=%d ratio=%.3f",
+            "chunk query-aware packed 重算: chunks_tokens=%d selected=%d ratio=%.3f",
             len(chunk_token_ids),
             int(selected_chunk_indices.numel()),
             req.recomp_ratio,
         )
         return blended_past_key_values, int(selected_chunk_indices.numel())
+
+    @staticmethod
+    def _merge_recompute_windows(selected_indices: List[int], chunk_len: int,
+                                 left_tokens: int) -> List[Tuple[int, int]]:
+        """将 selected token 扩展为左窗口并合并重叠区间。"""
+        windows = []
+        for idx in selected_indices:
+            start = max(0, idx - left_tokens)
+            end = min(chunk_len, idx + 1)
+            windows.append((start, end))
+        windows.sort()
+        merged: List[Tuple[int, int]] = []
+        for start, end in windows:
+            if not merged or start > merged[-1][1]:
+                merged.append((start, end))
+            else:
+                prev_start, prev_end = merged[-1]
+                merged[-1] = (prev_start, max(prev_end, end))
+        return merged
+
+    def _apply_chunk_query_aware_window_recompute(
+            self, req: GenerateRequest, past_key_values: Any,
+            chunk_token_ids: List[int], chunk_global_positions: List[int],
+            selected_chunk_indices: torch.Tensor) -> Tuple[Any, int]:
+        """将 QAW 选点扩展为左侧窗口，并在完整左上下文下连续重算。"""
+        selected_chunk_list = [int(i) for i in selected_chunk_indices.tolist()]
+        windows = self._merge_recompute_windows(
+            selected_indices=selected_chunk_list,
+            chunk_len=len(chunk_token_ids),
+            left_tokens=16,
+        )
+        blended_past_key_values = past_key_values
+        recomputed_tokens = 0
+
+        for window_start, window_end in windows:
+            global_start = chunk_global_positions[window_start]
+            global_end = chunk_global_positions[window_end - 1] + 1
+            window_token_ids = chunk_token_ids[window_start:window_end]
+            window_position_ids = chunk_global_positions[window_start:window_end]
+            prefix_past = self.model_runner.truncate_past_key_values(
+                blended_past_key_values, global_start)
+            _, recomputed_past = self.model_runner.forward_tokens(
+                window_token_ids,
+                past_key_values=prefix_past,
+                position_ids=window_position_ids,
+            )
+            window_past = slice_past_key_values(
+                recomputed_past,
+                start_idx=global_start,
+                end_idx=global_end,
+            )
+            window_indices = torch.tensor(
+                window_position_ids,
+                dtype=torch.long,
+                device=self.model_runner.device,
+            )
+            blended_past_key_values = scatter_selected_past_key_values(
+                base_past_key_values=blended_past_key_values,
+                selected_past_key_values=window_past,
+                selected_indices=window_indices,
+            )
+            recomputed_tokens += (window_end - window_start)
+
+        self.logger.info(
+            "chunk query-aware window 重算: chunks_tokens=%d selected=%d windows=%d window_tokens=%d ratio=%.3f",
+            len(chunk_token_ids),
+            int(selected_chunk_indices.numel()),
+            len(windows),
+            recomputed_tokens,
+            req.recomp_ratio,
+        )
+        return blended_past_key_values, recomputed_tokens
 
     def _prefill_suffix_or_last_token(self, prompt_token_ids: List[int],
                                       suffix_token_ids: List[int],
