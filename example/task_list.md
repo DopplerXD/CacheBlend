@@ -1,0 +1,9 @@
+- [x] --dataset=musique --qaw-ratio-min=0 --qaw-ratio-max=1 --count=50
+- [x] --dataset=wikimqa --qaw-ratio-min=0 --qaw-ratio-max=1 --count=50
+- [x] --dataset=cmrc --qaw-ratio-min=0 --qaw-ratio-max=1 --count=50
+- [x] --dataset=samsum --qaw-ratio-min=0 --qaw-ratio-max=1 --count=25
+- [x] --dataset=musique --qaw-ratio-min=0 --qaw-ratio-max=1 --count=50 --model-name=/root/models/Qwen2.5-1.5B
+- [x] --dataset=wikimqa --qaw-ratio-min=0 --qaw-ratio-max=1 --count=50 --model-name=/root/models/Qwen2.5-1.5B
+- [x] --dataset=cmrc --qaw-ratio-min=0 --qaw-ratio-max=1 --count=50 --model-name=/root/models/Qwen2.5-1.5B
+- [x] --dataset=samsum --qaw-ratio-min=0 --qaw-ratio-max=1 --count=25 --model-name=/root/models/Qwen2.5-1.5B
+- [x] --dataset=musique --qaw-ratio-min=0.6 --qaw-ratio-max=0.6 --count=50 --model-name=/root/models/Qwen2.5-1.5B
