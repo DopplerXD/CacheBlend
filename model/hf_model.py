@@ -86,6 +86,7 @@ class HFModelRunner:
     def _apply_rope_to_key(self, key: torch.Tensor,
                            positions: Sequence[int]) -> torch.Tensor:
         """对 key 的 RoPE 维度按给定 position 旋转。"""
+        original_dtype = key.dtype
         inv_freq = self._find_rotary_inv_freq()
         rotary_dim = int(inv_freq.numel() * 2)
         if rotary_dim > key.shape[-1]:
@@ -104,12 +105,13 @@ class HFModelRunner:
         key_pass = key[..., rotary_dim:]
         rotated = (key_rot * cos) + (self._rotate_half(key_rot) * sin)
         if key_pass.numel() == 0:
-            return rotated
-        return torch.cat([rotated, key_pass], dim=-1)
+            return rotated.to(dtype=original_dtype)
+        return torch.cat([rotated, key_pass], dim=-1).to(dtype=original_dtype)
 
     def _unapply_rope_from_key(self, key: torch.Tensor,
                                positions: Sequence[int]) -> torch.Tensor:
         """对 key 的 RoPE 维度按给定 position 反向旋转。"""
+        original_dtype = key.dtype
         inv_freq = self._find_rotary_inv_freq()
         rotary_dim = int(inv_freq.numel() * 2)
         if rotary_dim > key.shape[-1]:
@@ -128,8 +130,8 @@ class HFModelRunner:
         key_pass = key[..., rotary_dim:]
         unrotated = (key_rot * cos) - (self._rotate_half(key_rot) * sin)
         if key_pass.numel() == 0:
-            return unrotated
-        return torch.cat([unrotated, key_pass], dim=-1)
+            return unrotated.to(dtype=original_dtype)
+        return torch.cat([unrotated, key_pass], dim=-1).to(dtype=original_dtype)
 
     @torch.inference_mode()
     def rebase_past_key_values_positions(self, past_key_values: Any,
