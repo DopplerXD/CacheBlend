@@ -35,9 +35,21 @@ chunk_i tokens -> forward(past=None) -> chunk_i KV
 
 缓存 key 由 `chunk_namespace + model_name + token_ids hash` 组成。这样同一模型、同一数据集命名空间、同一 chunk token 序列可以跨样本复用。
 
-## 4. RoPE 重定位与 KV 拼接
+预热阶段只处理 chunk 本身，不把当前问题、任务尾部或其他 chunk 拼进去。因此缓存池保存的是“局部 chunk KV”，不是完整 prompt 的 session KV。后续请求命中缓存后，还需要根据当前 prompt 中的全局位置对 key 做重定位，再把多个 chunk KV 组织成完整上下文。
 
-独立 chunk prefill 得到的 key 已经按本地 position 旋转。拼接到完整上下文时，需要把 key 从本地位置变换到全局位置：
+## 4. Full Prefill
+
+`full_prefill` 是标准基线，不读取 chunk 缓存。引擎直接把
+
+```text
+prefix_text + chunk_texts[] + suffix_text
+```
+
+编码为完整 token 序列，并执行一次完整 prefill。该路径得到的是模型在完整上下文下自然形成的 KV，质量通常最接近标准推理，但每条样本都会重复计算所有 chunk。
+
+## 5. RoPE 重定位与 KV 拼接
+
+独立 chunk prefill 得到的 key 已经按本地 position 旋转，而完整 prompt 中每个 chunk 的起始位置取决于 `prefix_text` 长度和前面 chunk 的长度。直接把本地 key 拼接起来会造成位置编码不一致。拼接到完整上下文时，需要把 key 从本地位置变换到全局位置：
 
 ```text
 K_global = RoPE(global_pos) * RoPE(local_pos)^-1 * K_local
@@ -53,7 +65,9 @@ prefix KV + rebased chunk_1 KV + ... + rebased chunk_n KV
 
 随后 `suffix_text` 会在拼接后的 past 上完整 prefill，因此新主线不再需要 `suffix_len` 保护 query。
 
-## 5. Full Reuse
+需要注意，RoPE 重定位解决的是“位置一致性”问题，不会把独立 chunk 预热变成严格等价于完整 prompt prefill。独立 chunk 的 hidden state 没有看到前面的 prefix 和其他 chunk，因此 `full_reuse` 是一种速度优先的近似复用路径。
+
+## 6. Full Reuse
 
 `full_reuse` 流程：
 
@@ -66,7 +80,7 @@ prefix KV + rebased chunk_1 KV + ... + rebased chunk_n KV
 
 该方法不重算 chunk token，只验证 chunk KV 直接拼接复用的速度与质量。
 
-## 6. Query-aware
+## 7. Query-aware
 
 `query_aware` 在 full reuse 的 chunk KV 拼接结果上额外执行选择性更新：
 
@@ -79,19 +93,14 @@ prefix KV + rebased chunk_1 KV + ... + rebased chunk_n KV
 
 当前 QAW 仍是纯 Transformers 原型中的近似重算：selected token packed prefill 只能访问 packed 序列内部上下文，不等价于内核级稀疏 attention。但它避免了 query-aware 路径先做完整 new KV 预计算。
 
-实现支持两种 QAW 重算执行方式：
-
-- `qaw_type="packed"`：默认路径，只重算被选中的 token，速度更快但上下文近似更强。
-- `qaw_type="window"`：将每个 selected token 扩展为左侧 16 token 的连续窗口，合并重叠窗口后，用完整左侧 KV 作为 past 重算窗口，再 scatter 回完整 KV。该路径通常更稳，但重算 token 数和 TTFT 会增加。
-
-## 7. 实验口径
+## 8. 实验口径
 
 - QA 数据集：MusiQue、WikiMQA、CMRC，质量指标为 F1。
 - SAMSum：质量指标为 Rouge-L。
 - 主参数：`qaw_ratio` / `recomp_ratio`。
 - `suffix_len` 已从 chunk-cache 主线移除；旧脚本参数仅作为兼容入口，不参与 QAW 选择。
 
-## 8. 主要代码位置
+## 9. 主要代码位置
 
 - `schema/types.py`：chunk-aware 请求和 chunk 统计字段。
 - `cache/kv_cache.py`：chunk KV 池。

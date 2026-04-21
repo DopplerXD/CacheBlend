@@ -37,7 +37,6 @@ pip install -r requirements.txt
 
 ```bash
 python example/blend_musique.py --count 30 --qaw-ratio 0.7
-python example/blend_musique.py --count 30 --qaw-ratio 0.6 --qaw-type window
 python example/blend_wikimqa.py --count 10 --qaw-ratio 0.3
 python example/blend_cmrc.py --model-name /root/models/Qwen2.5-1.5B --count 30 --qaw-ratio 0.7
 python example/blend_samsum.py --count 100 --qaw-ratio 0.7
@@ -52,6 +51,6 @@ python example/blend_curve.py --dataset samsum --count 50 --qaw-ratio-min 0 --qa
 ## 说明
 
 - `suffix_len` 不再是 chunk-cache QAW 主参数；query/suffix 会在 chunk KV 拼接和可选 QAW 融合之后完整 prefill。
-- `--qaw-type packed` 是默认原实现；`--qaw-type window` 会把 QAW 选中的 token 扩展为左侧 16 token 的连续窗口重算。
+- QAW 主线使用 packed 方式：只把选中的 chunk token 打包 prefill，并按全局位置 scatter 回完整 chunk KV。
 - `kv_diff` 和旧 session-prefix 缓存路径仍保留为兼容代码，但不是当前实验主线。
 - KV 缓存为进程内内存缓存；重启进程后缓存会丢失。

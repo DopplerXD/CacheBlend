@@ -9,8 +9,7 @@
    - 覆盖 chunk 预热、RoPE 重定位、KV 拼接、full reuse、query-aware 融合和实验口径。
 
 2. `pure_transformers_query_aware_principle.md`
-   - query-aware token 选择、packed prefill、KV scatter 的方法背景。
-   - 阅读时注意：其中的旧 session/stale prompt 触发方式已被 chunk-cache 流程替代。
+   - 纯 Transformers 原型中的 chunk 预热、RoPE 重定位、query-aware token 选择、packed prefill 和 KV scatter。
 
 3. `query_aware_recompute_plan.md`
    - QAW 选择性重算的简版说明。
