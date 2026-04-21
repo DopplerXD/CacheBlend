@@ -1,38 +1,67 @@
-# Query-aware 选择性重算方案（当前纯 Transformers 原型）
+# Query-aware 选择性重算方案（Chunk KV Cache 主线）
 
-## 1. 背景与问题
+## 1. 背景与目标
 
-`kv_diff` 策略需要先得到当前 prompt 的 `new KV`，再与 `old KV` 比较差异，因此在纯 Transformers 原型中会额外执行一次 full prefill。该策略适合作为数值差异对照，但不适合作为“避免完整重算”的主要方案。
+当前主线不再把缓存单位定义为完整 session prompt，也不依赖 stale prompt 触发“非前缀命中”。RAG 样本中的每一段 `text` 都是一个 chunk：系统先将 chunk 独立 prefill 到 chunk KV 池，后续请求再按 chunk 命中缓存并重建完整上下文。
 
-Query-aware 策略的目标是：不先完整计算 `new KV`，而是直接利用当前 query 与候选 token 的语义相关性选择少量 token，对这些位置做近似更新。
+Query-aware 策略的目标是：在已经复用 chunk KV 的基础上，只更新与当前 query 语义更相关的部分 chunk token，避免为了选择重算位置而先执行一次完整 full prefill。
 
 ## 2. 当前实现结论
 
-当前仓库中的 Query-aware 路径已经不是“先 full prefill 再融合”的旧版本，而是：
+当前仓库中的 Query-aware 路径是：
 
-1. 使用输入 embedding 计算 query-token 相似度；
-2. 选择 Top-K token，并合并新增 token 与尾部强制保留 token；
-3. 只把选中的 token 打包成短序列做一次 packed prefill；
-4. 将 packed prefill 得到的 KV scatter 回旧 KV 底座；
-5. 补算最后一个 prompt token 的 logits 后进入 decode。
+1. 对 `chunk_texts` 中每个 chunk 独立预热，得到本地 position 下的 chunk KV；
+2. 推理时 prefill `prefix_text`，读取 chunk KV，并对 chunk key 做 RoPE 重定位；
+3. 按 `prefix + chunks` 的全局顺序拼接 KV；
+4. 使用 query token 与 chunk token 的输入 embedding 余弦相似度打分；
+5. 按 `recomp_ratio` 选择 Top-K chunk token；
+6. 将选中 token 按 packed 序列执行一次 prefill，并传入其全局 `position_ids`；
+7. 将 packed prefill 得到的 KV scatter 回完整 chunk KV 的对应全局位置；
+8. 在融合后的 past 上完整 prefill `suffix_text`，随后进入 decode。
 
-核心实现位于 `engine/inference_engine.py`：
+核心实现位于：
 
-- `_compute_query_aware_scores`
-- `_select_token_indices_from_scores`
-- `_prefill_with_query_aware_recompute`
-- `_build_blended_from_old_and_selected`
+- `engine/inference_engine.py::_generate_chunk_aware`
+- `engine/inference_engine.py::_warm_missing_chunk_caches`
+- `engine/inference_engine.py::_select_chunk_token_indices`
+- `engine/inference_engine.py::_recompute_selected_chunk_tokens_packed`
+- `cache/kv_cache.py`
+- `cache/kv_fusion.py`
+- `model/hf_model.py`
 
-## 3. 触发条件
+## 3. 三种实验路径
 
-在 `InferenceEngine.generate()` 中，Query-aware 分支只有同时满足以下条件时触发：
+### 3.1 Full Prefill
 
-1. `GenerateRequest.use_cache=True`
-2. 当前 `session_id` 已存在旧缓存；
-3. 旧缓存 token 序列不是新 prompt token 序列的前缀；
-4. `GenerateRequest.recompute_strategy == "query_aware"`。
+`full_prefill` 不读取 chunk KV。系统直接将
 
-实验脚本通常先构造一个 `stale_prompt` 写入缓存，再把同一份旧缓存拷贝给最终请求，以制造“非前缀旧缓存”，从而稳定触发 query-aware 分支。
+```text
+prefix_text + chunk_texts[] + suffix_text
+```
+
+拼成完整输入，一次性执行 prefill，再进入 decode。该路径是标准质量基线，能够让所有 token 在完整上下文中参与计算，但不会获得 chunk 缓存带来的加速。
+
+### 3.2 Full Reuse
+
+`full_reuse` 读取或预热每个 chunk 的 KV，并直接拼接复用：
+
+1. prefill `prefix_text`；
+2. 对每个 chunk KV 做 RoPE key 重定位；
+3. 拼接 `prefix KV + chunk KV`；
+4. 在拼接后的 past 上完整 prefill `suffix_text`；
+5. decode。
+
+RoPE 重定位是必要步骤。chunk 独立预热时 key 已经按本地位置旋转，而完整 prompt 中 chunk 的位置由 prefix 长度和前面 chunk 的长度决定。当前实现将 key 从本地位置变换到全局位置：
+
+```text
+K_global = RoPE(global_pos) * RoPE(local_pos)^-1 * K_local
+```
+
+value 不含 RoPE 位置旋转，直接复用。Full reuse 不重算 chunk token，因此速度最快，但它只保证位置编码一致，不保证独立 chunk KV 与完整上下文 prefill 完全等价。
+
+### 3.3 Query-aware
+
+`query_aware` 从 full reuse 的拼接 KV 出发，再更新一部分与 query 更相关的 chunk token。它不再依赖 `suffix_len` 强制保护查询区域，因为 `suffix_text` 会在 chunk KV 融合之后完整 prefill。
 
 ## 4. Token 打分
 
@@ -42,46 +71,24 @@ Query-aware 策略的目标是：不先完整计算 `new KV`，而是直接利�
 query_token_ids = encode_no_special(query_text)
 ```
 
-若 `query_text` 为空，则回退到 prompt 尾部 `suffix_len` 个 token。
+候选 token 只来自 `chunk_texts`。`prefix_text` 和 `suffix_text` 不进入 Top-K 候选区间，原因是 prefix 通常是任务模板，suffix/query 会在融合后完整 prefill。
 
 候选 token 和 query token 都通过模型输入 embedding 层获得向量表示，然后做 L2 归一化和余弦相似度：
 
 ```text
-sim = normalize(cand_emb) @ normalize(query_emb).T
+sim = normalize(chunk_emb) @ normalize(query_emb).T
 score_i = max_j sim(i, j)
 ```
 
-这里的分数表示“候选 token 与 query 中任一 token 的最大语义相关性”。
+这里的分数表示“某个 chunk token 与 query 中任一 token 的最大语义相关性”。
 
-## 5. Token 选择
-
-通用选择器 `_select_token_indices_from_scores()` 负责构造最终索引集合。
-
-默认 Query-aware 路径：
-
-```text
-S = TopK(score, recomp_ratio) union AddedTokens union ForcedSuffix
-```
-
-其中：
-
-- `TopK(score, recomp_ratio)`：在候选区间中按分数选择高相关 token；
-- `AddedTokens`：新 prompt 中超出旧缓存长度的新增 token；
-- `ForcedSuffix`：prompt 尾部 `suffix_len` 个 token；
-- 默认 `force_changed=False`，即不强制加入所有新旧内容不同的位置。
-
-两个实验变体：
-
-1. `qaw_variant="no_suffix"`：移除尾部强制保留；
-2. `qaw_variant="random_topk"`：用随机 Top-K 替代 query-aware 分数选择。
-
-## 6. Packed Prefill 与 KV Scatter
+## 5. Packed Prefill 与 KV Scatter
 
 选中索引后，系统构造：
 
 ```text
-selected_token_ids = [prompt_token_ids[i] for i in selected_indices]
-selected_position_ids = selected_indices
+selected_token_ids = chunk_token_ids[selected_chunk_positions]
+selected_position_ids = selected_global_positions
 ```
 
 随后执行：
@@ -94,38 +101,34 @@ forward_tokens(
 )
 ```
 
-这会得到只包含 selected token 的 `selected_past_key_values`。然后系统以旧 KV 为底座：
+这会得到只包含 selected token 的 `selected_past_key_values`。系统再以 full reuse 拼接出的完整 KV 为底座，将 selected KV 按全局位置 scatter 回对应位置，未选中位置继续复用 chunk KV。
 
-1. 若旧 KV 长度不足新 prompt 长度，则尾部补零；
-2. 将 selected KV 按 `selected_indices` 写回完整序列位置；
-3. 未选中位置继续复用旧 KV。
+该流程是纯 Transformers 原型中的近似更新。packed prefill 保留了原始全局位置编号，但 selected token 在这次前向中只能看到 packed 序列内部的上下文，不等价于底层稀疏 attention 在完整上下文中的精确重算。
 
-最后系统截取融合 KV 到 `new_len - 1`，用最后一个 prompt token 补算 logits，保证后续 decode 有正确入口。
+## 6. 与旧 kv_diff/session 路径的差异
 
-## 7. 与 kv_diff 的差异
-
-| 维度 | kv_diff | query_aware |
+| 维度 | 旧 session / kv_diff 路径 | 当前 chunk QAW 路径 |
 | --- | --- | --- |
-| 选择依据 | 新旧 V 的 L2 差异 | query-token embedding 余弦相似度 |
-| 是否需要先得到完整 new KV | 需要 | 不需要 |
-| 是否强制 changed token | 是 | 否 |
-| 主要用途 | 数值差异对照策略 | 本文核心方法 |
-| 当前实现风险 | 额外 full prefill，显存峰值高 | packed prefill 近似，不完全等价 full prefill |
+| 缓存单位 | 完整 prompt 或 session 前缀 | 单个 chunk |
+| 触发方式 | 旧 prompt 与新 prompt 非前缀匹配 | `chunk_texts` 非空且 `recompute_strategy="query_aware"` |
+| 选择依据 | 新旧 V 差异或旧 prompt 对齐 | query 与 chunk token 的 embedding 相似度 |
+| 是否需要先 full prefill 得到 new KV | kv_diff 需要 | 不需要 |
+| query/suffix 处理 | 依赖尾部强制重算参数 | suffix/query 在融合后完整 prefill |
+| KV 拼接关键点 | session KV 对齐 | chunk key 的 RoPE 重定位 |
 
-## 8. 参数建议
+## 7. 参数建议
 
-1. `recomp_ratio`：控制 Top-K 比例。低比例更快，高比例更接近 full prefill 质量。
-2. `suffix_len`：保护 prompt 尾部 query 区域。常用值为 `24` 或 `32`。
-3. `query_text`：建议显式传入，避免系统模板和文档说明语句污染 query 表示。
-4. `qaw_variant`：只作为消融实验使用，正文主方法采用 `default`。
+1. `recomp_ratio`：控制 chunk token Top-K 比例。低比例更快，高比例通常更接近 full prefill 质量。
+2. `query_text`：建议显式传入，避免系统模板和回答格式污染 query 表示。
+3. `chunk_namespace`：建议按数据集或实验划分，避免不同任务的同 token chunk 意外共用。
 
-## 9. 论文表述边界
+## 8. 论文表述边界
 
-第三章中应把当前方法描述为“纯 Transformers 原型中的近似选择性重算”。它验证了 query-aware token selection 的可行性，但没有实现 vLLM/PagedAttention 级别的底层稀疏重算内核。
+第三章应把当前方法描述为“基于 chunk KV 缓存的查询感知选择性重算”。可以强调：
 
-可以强调：
-
-- 当前方法避免了 query-aware 路径中的完整 new KV 预计算；
-- 当前方法通过 packed prefill 降低被更新 token 数量；
-- 当前方法的质量和速度取决于 `recomp_ratio`、`suffix_len` 和任务类型；
-- 当前方法不是严格等价于 full prefill 的数学精确重算。
+- 每段检索文本独立预热为 chunk KV；
+- Full Prefill 不走缓存，是标准质量基线；
+- Full Reuse 通过 RoPE 重定位和 KV 拼接直接复用 chunk；
+- Query-aware 在 Full Reuse 的基础上 packed 重算高相关 chunk token 并 scatter 融合；
+- 当前实现避免了 query-aware 路径中的完整 new KV 预计算；
+- packed prefill 是原型系统中的近似更新，不应表述为严格等价于 full prefill。
