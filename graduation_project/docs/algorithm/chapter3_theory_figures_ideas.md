@@ -6,6 +6,235 @@
 
 ---
 
+## 0. 当前实现口径补充（Chunk KV Cache 版本，优先参考）
+
+本节是对当前代码实现的补充说明，用于在保留旧图表素材的同时，明确论文第三章应优先采用的最新口径。后续旧素材中如果出现 session 级缓存、stale prompt、尾部强制重算等历史表述，写正文时应以本节为准进行替换或改写。
+
+当前实现的主线已经从“完整 session prompt KV 复用”切换为“chunk 级 KV 缓存复用”。RAG 样本中的每一段 `text` 是一个 chunk。系统先对每个 chunk 独立 Prefill 并写入 chunk KV 池；推理时读取 chunk KV，通过 RoPE key 重定位将其从本地位置调整到完整 Prompt 的全局位置，再拼接为当前请求的上下文 KV。Query-aware 路径在 Full Reuse 的 KV 底座上选择部分与 query 更相关的 chunk token 做 packed Prefill，并将 selected KV scatter 回完整 KV。
+
+### 0.1 第三章当前主线
+
+建议正文围绕以下流程展开：
+
+```text
+RAG 文档重复出现
+-> 每段 text 独立预热为 chunk KV
+-> 推理时 RoPE 重定位并拼接 chunk KV
+-> Full Prefill / Prefix Reuse / Full Reuse / Query-aware 路径对比
+-> Query-aware 用 query-token embedding 相似度选择 chunk token
+-> selected token packed Prefill
+-> selected KV scatter 回完整 KV
+-> suffix/query Prefill 后进入 Decode
+```
+
+核心表述：
+
+- 缓存单位是一段 `text`，即一个 chunk。
+- Full Prefill 不读取缓存，是标准质量基线。
+- Prefix Reuse 用于说明传统前缀缓存机制和兼容路径，不是当前实验主线。
+- Full Reuse 读取 chunk KV，做 RoPE key 重定位后直接拼接。
+- Query-aware 在 Full Reuse 的 KV 底座上选择部分 chunk token 做 packed 重算。
+- Packed 重算保留全局 `position_ids`，但仍是纯 Transformers 原型中的近似更新。
+- 当前 chunk 主线中，query/suffix 会在 KV 拼接或融合后完整 Prefill，不再把尾部强制长度作为核心参数。
+
+### 0.2 当前推荐图表
+
+#### 图3-1 RAG 长上下文重复 Prefill 问题
+
+图示内容：
+
+- 多个 query 指向同一组或重叠的文档 chunk；
+- 无缓存时，每个请求都对相同 chunk 重复 Prefill；
+- 标出 Prefill 阶段是长上下文主要开销来源。
+
+图注建议：
+
+> RAG 场景下，不同查询可能反复召回相同文档片段，导致 Prefill 阶段重复构建相同文本块的 KV Cache。
+
+#### 图3-2 三种推理路径对比
+
+三栏结构：
+
+| 路径 | 图中元素 |
+| --- | --- |
+| Full Prefill | 完整 Prompt 一次性进入模型，不访问 chunk KV 池 |
+| Full Reuse | chunk KV 池 -> RoPE 重定位 -> KV concat -> suffix/query Prefill |
+| Query-aware | Full Reuse 底座 -> query 打分 -> Top-K selected token -> packed Prefill -> scatter |
+
+该图是第三章最重要的总览图。若需要引入 Prefix Reuse，可在图旁单独加一个小分支，说明其只在完整 token 前缀匹配时成立。
+
+#### 图3-3 Chunk KV 预热与 RoPE 重定位
+
+图示内容：
+
+1. 每个 chunk 独立 Prefill，位置从 0 开始；
+2. KV 池存储 `(K_i^{local}, V_i^{local})`；
+3. 拼接时根据 chunk 在完整 Prompt 中的起始位置计算 global position；
+4. key 执行：
+
+```text
+K_global = RoPE(global_pos) * RoPE(local_pos)^-1 * K_local
+```
+
+5. value 不经过 RoPE 旋转，可以直接复用。
+
+图中应明确：RoPE 重定位解决的是位置一致性，不保证独立 chunk KV 与完整上下文 Prefill 严格等价。
+
+#### 表3-1 主要符号表
+
+建议保留以下符号：
+
+| 符号 | 含义 |
+| --- | --- |
+| $C_i$ | 第 $i$ 个 chunk |
+| $T_i$ | chunk token 序列 |
+| $Q$ | query token 集合 |
+| $P_{pre}$ | chunk 前的 prefix |
+| $P_{suf}$ | chunk 后的 query/suffix |
+| $(K_i^{local},V_i^{local})$ | 独立预热得到的 chunk KV |
+| $(K_i^{global},V_i^{global})$ | RoPE 重定位后的 chunk KV |
+| $(K_{reuse},V_{reuse})$ | Full Reuse 拼接 KV |
+| $(K_{sel},V_{sel})$ | packed 重算得到的 selected KV |
+| $(K_{blend},V_{blend})$ | Query-aware 融合 KV |
+| $S$ | 被选中重算的 chunk token 集合 |
+| $r$ | `recomp_ratio` |
+
+#### 表3-2 方法路径对比表
+
+| 方法 | 缓存单位 | 是否读取 chunk KV | 主要处理 | query/suffix 处理 | 作用 |
+| --- | --- | --- | --- | --- | --- |
+| Full Prefill | 无 | 否 | 完整上下文中全量 Prefill | 随完整 Prompt 一起 Prefill | 标准质量基线 |
+| Prefix Reuse | 连续前缀 | 视情况 | 复用匹配前缀，只计算新增 token | 增量 Prefill | 传统缓存背景/兼容路径 |
+| Full Reuse | chunk | 是 | RoPE 重定位后直接拼接 | 在拼接 KV 上完整 Prefill | 速度基线 |
+| Query-aware | chunk | 是 | 先拼接，再 packed 重算 Top-K chunk token 并 scatter | 在融合 KV 上完整 Prefill | 质量/时延折中 |
+
+#### 图3-4 Query-token 相似度矩阵
+
+图示内容：
+
+- 行：chunk token；
+- 列：query token；
+- 单元格颜色：embedding cosine similarity；
+- 每行取最大值得到 `score_t`；
+- 分数最高的 Top-K chunk token 被标为 selected。
+
+公式：
+
+```text
+sim(t,j) = cos(e_t, u_j)
+score_t = max_j sim(t,j)
+```
+
+#### 图3-5 Packed Prefill 与全局位置
+
+图示内容：
+
+- 从多个 chunk 中抽出 selected token；
+- selected token 组成短 packed 序列；
+- 每个 selected token 保留完整 Prompt 中的 global position；
+- 模型前向输出 selected KV。
+
+需要强调：
+
+- packed 序列不是完整 Prompt；
+- 全局 `position_ids` 保证位置编号一致；
+- 该路径是原型中的近似重算。
+
+#### 图3-6 KV Scatter 融合
+
+图示内容：
+
+- Full Reuse KV 是完整底座；
+- selected KV 按 global position 写回；
+- 未选中位置继续复用；
+- 得到 blended KV；
+- 在 blended KV 上继续 Prefill query/suffix 并进入 Decode。
+
+公式：
+
+```text
+K_blend[i] = K_sel[i],   if i in S
+K_blend[i] = K_reuse[i], otherwise
+
+V_blend[i] = V_sel[i],   if i in S
+V_blend[i] = V_reuse[i], otherwise
+```
+
+### 0.3 当前伪代码建议
+
+#### 算法3-1 Query-aware chunk token 选择
+
+```text
+输入：chunk_tokens, chunk_global_positions, query_text, recomp_ratio
+输出：selected_token_ids, selected_global_positions
+
+1  query_tokens <- EncodeWithoutSpecialTokens(query_text)
+2  chunk_emb <- Embedding(chunk_tokens)
+3  query_emb <- Embedding(query_tokens)
+4  chunk_emb <- L2Normalize(chunk_emb)
+5  query_emb <- L2Normalize(query_emb)
+6  sim <- chunk_emb * Transpose(query_emb)
+7  score <- RowMax(sim)
+8  topk_num <- max(1, floor(len(chunk_tokens) * recomp_ratio))
+9  selected_chunk_indices <- TopK(score, topk_num)
+10 selected_token_ids <- chunk_tokens[selected_chunk_indices]
+11 selected_global_positions <- chunk_global_positions[selected_chunk_indices]
+12 return selected_token_ids, selected_global_positions
+```
+
+#### 算法3-2 Query-aware KV 融合
+
+```text
+输入：reuse_past, selected_token_ids, selected_global_positions, suffix_tokens
+输出：final_past, logits_for_decode
+
+1  selected_past <- ForwardTokens(
+       selected_token_ids,
+       past_key_values = None,
+       position_ids = selected_global_positions
+   )
+2  blended_past <- Scatter(
+       base = reuse_past,
+       updates = selected_past,
+       indices = selected_global_positions
+   )
+3  logits_for_decode, final_past <- ForwardTokens(
+       suffix_tokens,
+       past_key_values = blended_past,
+       position_ids = suffix_global_positions
+   )
+4  return final_past, logits_for_decode
+```
+
+### 0.4 当前实现涉及的主要参数
+
+第三章写算法参数时，建议覆盖以下字段：
+
+| 参数 | 作用 |
+| --- | --- |
+| `prefix_text` | 任务说明或文档区前导模板 |
+| `chunk_texts` | 可缓存文本块列表，一段 `text` 对应一个 chunk |
+| `suffix_text` | 当前 query、回答格式和生成入口 |
+| `query_text` | Query-aware 打分使用的语义查询文本 |
+| `chunk_namespace` | chunk KV 缓存命名空间 |
+| `recompute_strategy` | 控制 `none` / `query_aware` 等路径 |
+| `recomp_ratio` | 控制 Top-K chunk token 重算比例 |
+| `qaw_type` | 当前实验主线按 packed 方式描述 |
+| `max_new_tokens` | 最大生成长度 |
+| `temperature` | 采样温度，实验通常为 0 |
+| `top_p` | nucleus sampling 参数，实验通常为 1 |
+
+### 0.5 当前写作中必须避免的旧表述
+
+- 不要把当前实现写成会话级 KV 缓存或完整前缀缓存。
+- 不要说 Query-aware 需要先 Full Prefill 得到 new KV。
+- 不要说 packed 重算与 Full Prefill 严格等价。
+- 不要把 query/suffix 写成复用缓存的一部分；它们是在 chunk KV 拼接或融合后完整 Prefill。
+- 不要把历史 `kv_diff` 路径写成本文主方法。
+- 不要把旧尾部强制重算长度写成当前 chunk 主线的核心参数。
+
+---
+
 ## 1. 正文推荐组合
 
 普通水平本科论文正文不宜放太多复杂图。建议正文采用以下组合：
