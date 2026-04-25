@@ -14,7 +14,7 @@ if ROOT_DIR not in sys.path:
 
 EXAMPLE_DIR = os.path.join(ROOT_DIR, "example")
 if EXAMPLE_DIR not in sys.path:
-    sys.path.insert(0, EXAMPLE_DIR)
+    sys.path.append(EXAMPLE_DIR)
 
 SUPPORTED_DATASETS = ("cmrc", "musique", "samsum", "wikimqa")
 
