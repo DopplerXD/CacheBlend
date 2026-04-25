@@ -1,1 +1,0 @@
-{"event": "run_start", "script": "example/blend_musique.py", "dataset": "inputs/musique_s.json", "started_at": "2026-04-21 18:33:23", "model": "/root/models/Yi-6B", "max_new_tokens": 32, "temperature": 0.0, "top_p": 1.0, "count": 5, "qaw_ratio": 0.5}
