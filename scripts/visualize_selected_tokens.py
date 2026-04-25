@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from datetime import datetime
 from typing import Any, List, Sequence
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -30,7 +31,7 @@ def parse_args() -> argparse.Namespace:
                         required=True)
     parser.add_argument("--count", type=int, default=1, help="number of samples")
     parser.add_argument("--qaw-ratio",
-                        type=float,
+                        type=ratio_value,
                         default=0.7,
                         help="top-k ratio over chunk tokens")
     parser.add_argument("--model-name",
@@ -38,6 +39,26 @@ def parse_args() -> argparse.Namespace:
                         default="",
                         help="override RuntimeConfig.model_name; default is Yi-6B")
     return parser.parse_args()
+
+
+def ratio_value(raw_value: str) -> float:
+    value = float(raw_value)
+    if value < 0 or value > 1:
+        raise argparse.ArgumentTypeError("must be between 0 and 1")
+    return value
+
+
+def build_output_path() -> str:
+    output_dir = os.path.join(ROOT_DIR, "outputs")
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    return os.path.join(output_dir, f"selected_tokens_{timestamp}.output")
+
+
+def emit(line: str, output_file: Any) -> None:
+    print(line, flush=True)
+    output_file.write(line + "\n")
+    output_file.flush()
 
 
 def encode_chunk_tokens(model_runner: Any, chunk_texts: Sequence[str]) -> List[int]:
@@ -105,7 +126,7 @@ def selected_token_text(model_runner: Any,
 def main() -> None:
     args = parse_args()
     if args.count < 0:
-        raise ValueError("--count must be >= 0")
+        raise SystemExit("--count must be >= 0")
 
     from config import RuntimeConfig
     from blend_curve_common import build_sample_parts, load_dataset
@@ -123,24 +144,36 @@ def main() -> None:
     logger.disabled = True
     model_runner = HFModelRunner(cfg.model_name, cfg.device, cfg.model_dtype, logger)
 
-    for sample_idx, example in enumerate(eval_dataset[:sample_limit], start=1):
-        doc_prompts, q_prompt, query_text = build_sample_parts(example, spec)
-        chunk_token_ids = encode_chunk_tokens(model_runner, doc_prompts)
+    output_path = build_output_path()
+    with open(output_path, "w", encoding="utf-8") as output_file:
+        emit(f"output_path: {output_path}", output_file)
+        emit(f"dataset: {args.dataset}", output_file)
+        emit(f"count: {sample_limit}", output_file)
+        emit(f"qaw_ratio: {args.qaw_ratio}", output_file)
+        emit(f"model: {cfg.model_name}", output_file)
 
-        query_source = query_text.strip() or q_prompt.strip()
-        query_token_ids = (model_runner.encode_no_special(query_source)
-                           if query_source else [])
-        scores = compute_query_aware_scores(
-            model_runner=model_runner,
-            chunk_token_ids=chunk_token_ids,
-            query_token_ids=query_token_ids,
-        )
-        selected_indices = select_chunk_indices(scores, args.qaw_ratio)
-        print(
-            f"sample {sample_idx} selected_tokens: "
-            f"{selected_token_text(model_runner, chunk_token_ids, selected_indices)}",
-            flush=True,
-        )
+        for sample_idx, example in enumerate(eval_dataset[:sample_limit], start=1):
+            doc_prompts, q_prompt, query_text = build_sample_parts(example, spec)
+            chunk_token_ids = encode_chunk_tokens(model_runner, doc_prompts)
+
+            query_source = query_text.strip() or q_prompt.strip()
+            query_token_ids = (model_runner.encode_no_special(query_source)
+                               if query_source else [])
+            scores = compute_query_aware_scores(
+                model_runner=model_runner,
+                chunk_token_ids=chunk_token_ids,
+                query_token_ids=query_token_ids,
+            )
+            selected_indices = select_chunk_indices(scores, args.qaw_ratio)
+            selected_text = selected_token_text(
+                model_runner=model_runner,
+                chunk_token_ids=chunk_token_ids,
+                selected_indices=selected_indices,
+            )
+            emit(
+                f"sample {sample_idx} selected_tokens: {selected_text}",
+                output_file,
+            )
 
 
 if __name__ == "__main__":
