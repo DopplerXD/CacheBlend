@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print query-aware selected tokens without running cache recomputation."""
+"""Save query-aware selected tokens without running cache recomputation."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ SUPPORTED_DATASETS = ("cmrc", "musique", "samsum", "wikimqa")
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Visualize query-aware token selection only. This script does not "
+            "Save query-aware token selection only. This script does not "
             "run KV cache reuse, recomputation, prefill, or generation."
         ))
     parser.add_argument("--dataset",
@@ -32,8 +32,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--count", type=int, default=1, help="number of samples")
     parser.add_argument("--qaw-ratio",
                         type=ratio_value,
-                        default=0.7,
-                        help="top-k ratio over chunk tokens")
+                        default=0.6,
+                        help="default top-k ratio over chunk tokens")
+    parser.add_argument(
+        "--ratio-min",
+        type=ratio_value,
+        default=None,
+        help="minimum qaw ratio to evaluate; defaults to --qaw-ratio",
+    )
+    parser.add_argument(
+        "--ratio-max",
+        type=ratio_value,
+        default=None,
+        help="maximum qaw ratio to evaluate; defaults to --qaw-ratio",
+    )
     parser.add_argument("--model-name",
                         type=str,
                         default="",
@@ -55,10 +67,23 @@ def build_output_path() -> str:
     return os.path.join(output_dir, f"selected_tokens_{timestamp}.output")
 
 
-def emit(line: str, output_file: Any) -> None:
-    print(line, flush=True)
+def write_line(line: str, output_file: Any) -> None:
     output_file.write(line + "\n")
-    output_file.flush()
+
+
+def ratio_grid(ratio_min: float, ratio_max: float, step: float = 0.05) -> List[float]:
+    if ratio_min > ratio_max:
+        raise SystemExit("--ratio-min must be <= --ratio-max")
+
+    values: List[float] = []
+    current = round(ratio_min, 2)
+    end = round(ratio_max, 2)
+    while current <= end + 1e-9:
+        values.append(round(current, 2))
+        current = round(current + step, 10)
+    if not values:
+        values = [round(ratio_min, 2)]
+    return values
 
 
 def encode_chunk_tokens(model_runner: Any, chunk_texts: Sequence[str]) -> List[int]:
@@ -127,11 +152,21 @@ def main() -> None:
     args = parse_args()
     if args.count < 0:
         raise SystemExit("--count must be >= 0")
+    ratio_min = args.qaw_ratio if args.ratio_min is None else args.ratio_min
+    ratio_max = args.qaw_ratio if args.ratio_max is None else args.ratio_max
+    ratios = ratio_grid(ratio_min, ratio_max)
 
     from config import RuntimeConfig
     from blend_curve_common import build_sample_parts, load_dataset
     from model.hf_model import HFModelRunner
     from utils.logging_utils import setup_logger
+    try:
+        from transformers.utils import logging as transformers_logging
+
+        transformers_logging.disable_progress_bar()
+        transformers_logging.set_verbosity_error()
+    except Exception:
+        pass
 
     spec, eval_dataset = load_dataset(args.dataset)
     sample_limit = min(args.count, len(eval_dataset))
@@ -146,11 +181,18 @@ def main() -> None:
 
     output_path = build_output_path()
     with open(output_path, "w", encoding="utf-8") as output_file:
-        emit(f"output_path: {output_path}", output_file)
-        emit(f"dataset: {args.dataset}", output_file)
-        emit(f"count: {sample_limit}", output_file)
-        emit(f"qaw_ratio: {args.qaw_ratio}", output_file)
-        emit(f"model: {cfg.model_name}", output_file)
+        write_line(f"output_path: {output_path}", output_file)
+        write_line(f"dataset: {args.dataset}", output_file)
+        write_line(f"count: {sample_limit}", output_file)
+        write_line(f"qaw_ratio_default: {args.qaw_ratio}", output_file)
+        write_line(f"ratio_min: {ratio_min}", output_file)
+        write_line(f"ratio_max: {ratio_max}", output_file)
+        write_line("ratio_step: 0.05", output_file)
+        write_line(
+            "ratio_values: " + ", ".join(f"{ratio:.2f}" for ratio in ratios),
+            output_file,
+        )
+        write_line(f"model: {cfg.model_name}", output_file)
 
         for sample_idx, example in enumerate(eval_dataset[:sample_limit], start=1):
             doc_prompts, q_prompt, query_text = build_sample_parts(example, spec)
@@ -164,16 +206,19 @@ def main() -> None:
                 chunk_token_ids=chunk_token_ids,
                 query_token_ids=query_token_ids,
             )
-            selected_indices = select_chunk_indices(scores, args.qaw_ratio)
-            selected_text = selected_token_text(
-                model_runner=model_runner,
-                chunk_token_ids=chunk_token_ids,
-                selected_indices=selected_indices,
-            )
-            emit(
-                f"sample {sample_idx} selected_tokens: {selected_text}",
-                output_file,
-            )
+            for ratio in ratios:
+                selected_indices = select_chunk_indices(scores, ratio)
+                selected_text = selected_token_text(
+                    model_runner=model_runner,
+                    chunk_token_ids=chunk_token_ids,
+                    selected_indices=selected_indices,
+                )
+                write_line(
+                    f"qaw_ratio {ratio:.2f} sample {sample_idx} selected_tokens: {selected_text}",
+                    output_file,
+                )
+
+        output_file.flush()
 
 
 if __name__ == "__main__":
