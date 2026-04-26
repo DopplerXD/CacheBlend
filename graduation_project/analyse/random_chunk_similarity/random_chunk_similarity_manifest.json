@@ -1,0 +1,143 @@
+{
+  "seed": 2026,
+  "model_name": "/root/models/Yi-6B",
+  "max_chunk_tokens": 128,
+  "max_query_tokens": 96,
+  "datasets": [
+    {
+      "dataset": "musique",
+      "sample_idx": 31,
+      "chunk_idx": 6,
+      "sample_count": 150,
+      "chunk_count": 10,
+      "question": "Where are the headquarters for the publisher of In the Shadow of Greatness?",
+      "answers": [
+        "Annapolis"
+      ],
+      "chunk_token_total": 604,
+      "query_token_total": 15,
+      "chunk_window": {
+        "start": 257,
+        "end": 385,
+        "token_count": 128
+      },
+      "query_window": {
+        "start": 0,
+        "end": 15,
+        "token_count": 15
+      },
+      "query_similarity": {
+        "path": "/root/github/CacheBlend/graduation_project/analyse/random_chunk_similarity/musique_sample031_chunk06_query_similarity.png",
+        "matrix_shape": [
+          128,
+          15
+        ]
+      },
+      "query_mean_similarity": {
+        "path": "/root/github/CacheBlend/graduation_project/analyse/random_chunk_similarity/musique_sample031_chunk06_query_mean_similarity.png",
+        "matrix_shape": [
+          128,
+          1
+        ],
+        "pooled_query_token_count": 15
+      },
+      "chunk_token_similarity": {
+        "path": "/root/github/CacheBlend/graduation_project/analyse/random_chunk_similarity/musique_sample031_chunk06_chunk_token_similarity.png",
+        "matrix_shape": [
+          128,
+          128
+        ]
+      }
+    },
+    {
+      "dataset": "wikimqa",
+      "sample_idx": 132,
+      "chunk_idx": 2,
+      "sample_count": 200,
+      "chunk_count": 10,
+      "question": "Where was the director of film The Dinner (2013 Film) born?",
+      "answers": [
+        "Eindhoven"
+      ],
+      "chunk_token_total": 666,
+      "query_token_total": 17,
+      "chunk_window": {
+        "start": 228,
+        "end": 356,
+        "token_count": 128
+      },
+      "query_window": {
+        "start": 0,
+        "end": 17,
+        "token_count": 17
+      },
+      "query_similarity": {
+        "path": "/root/github/CacheBlend/graduation_project/analyse/random_chunk_similarity/wikimqa_sample132_chunk02_query_similarity.png",
+        "matrix_shape": [
+          128,
+          17
+        ]
+      },
+      "query_mean_similarity": {
+        "path": "/root/github/CacheBlend/graduation_project/analyse/random_chunk_similarity/wikimqa_sample132_chunk02_query_mean_similarity.png",
+        "matrix_shape": [
+          128,
+          1
+        ],
+        "pooled_query_token_count": 17
+      },
+      "chunk_token_similarity": {
+        "path": "/root/github/CacheBlend/graduation_project/analyse/random_chunk_similarity/wikimqa_sample132_chunk02_chunk_token_similarity.png",
+        "matrix_shape": [
+          128,
+          128
+        ]
+      }
+    },
+    {
+      "dataset": "samsum",
+      "sample_idx": 154,
+      "chunk_idx": 40,
+      "sample_count": 200,
+      "chunk_count": 50,
+      "question": "Dialogue: Simon: Good afternoon.\r\nFreddy: Good afternoon, Simon.\r\nSimon: I heard from Barbara that you have a good singing voice and that she had asked you to sing at the school concert?\r\nFreddy: Well yes, she did. Obviously it's up to you, you are doing the music. Not every musician likes to jst perform with people he doesn't know.\r\nFreddy: It wasn't my idea, but if you are ok with we can do it.\r\nSimon: The only problem I have is that I can't see myself finding any free time in the coming week to practice and the concert is on Friday. Do you have backing tracks for the things you like to sing?\r\nFreddy: Sure, I can send you something.\r\nSimon: How many would you like to sing? \r\nFreddy: I don't know, one or two, three at most.\r\nSimon: OK, then send me three tracks. Maybe it'll be possible for me to play guitar as you sing for one or two of the tracks, we'll have to see. \r\nFreddy: That would be good. In the end live music is something a lot more special than just using backing tracks.\r\nSimon: I'll send you my email address and you can send me the attachments on that.\r\nFreddy: Will do. thanks.\nSummary: ",
+      "answers": [
+        "Freddy will sing at the school concert and send Simon 3 backing tracks."
+      ],
+      "chunk_token_total": 213,
+      "query_token_total": 318,
+      "chunk_window": {
+        "start": 71,
+        "end": 199,
+        "token_count": 128
+      },
+      "query_window": {
+        "start": 107,
+        "end": 203,
+        "token_count": 96
+      },
+      "query_similarity": {
+        "path": "/root/github/CacheBlend/graduation_project/analyse/random_chunk_similarity/samsum_sample154_chunk40_query_similarity.png",
+        "matrix_shape": [
+          128,
+          96
+        ]
+      },
+      "query_mean_similarity": {
+        "path": "/root/github/CacheBlend/graduation_project/analyse/random_chunk_similarity/samsum_sample154_chunk40_query_mean_similarity.png",
+        "matrix_shape": [
+          128,
+          1
+        ],
+        "pooled_query_token_count": 96
+      },
+      "chunk_token_similarity": {
+        "path": "/root/github/CacheBlend/graduation_project/analyse/random_chunk_similarity/samsum_sample154_chunk40_chunk_token_similarity.png",
+        "matrix_shape": [
+          128,
+          128
+        ]
+      }
+    }
+  ]
+}
