@@ -201,6 +201,8 @@ def build_chunk_request(session_id: str, spec: Dict, doc_prompts: List[str],
                         use_cache: bool, recompute_strategy: str,
                         recomp_ratio: float = 0.0,
                         qaw_type: str = "packed",
+                        qaw_variant: str = "default",
+                        qaw_random_seed: int = 0,
                         max_new_tokens: Optional[int] = None) -> GenerateRequest:
     final_prompt = build_final_prompt(spec["prefix_prompt"], doc_prompts, q_prompt)
     return GenerateRequest(
@@ -213,6 +215,8 @@ def build_chunk_request(session_id: str, spec: Dict, doc_prompts: List[str],
         recompute_strategy=recompute_strategy,
         recomp_ratio=recomp_ratio,
         qaw_type=qaw_type,
+        qaw_variant=qaw_variant,
+        qaw_random_seed=qaw_random_seed,
         query_text=query_text,
         prefix_text=spec["prefix_prompt"],
         chunk_texts=doc_prompts,
@@ -428,6 +432,8 @@ def evaluate_qaw_grid(
     ratio_values: List[float],
     suffix_values: List[int],
     qaw_type: str = "packed",
+    qaw_variant: str = "default",
+    qaw_random_seed: int = 0,
 ) -> Tuple[int, Dict[Tuple[float, int], Dict[str, object]]]:
     grid_pairs = [(ratio, suffix) for ratio in ratio_values for suffix in suffix_values]
     total_groups = len(grid_pairs)
@@ -480,6 +486,8 @@ def evaluate_qaw_grid(
                     recompute_strategy="query_aware",
                     recomp_ratio=recomp_ratio,
                     qaw_type=qaw_type,
+                    qaw_variant=qaw_variant,
+                    qaw_random_seed=qaw_random_seed,
                 )
                 qaw_res = engine.generate(qaw_req)
 
