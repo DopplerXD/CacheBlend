@@ -1,0 +1,135 @@
+output_path: /root/github/CacheBlend/outputs/input0_qaw_random_tokens_20260426073649.output
+input_file: /root/github/CacheBlend/inputs/0.json
+model: /root/models/Yi-6B
+chunk_count: 5
+chunk_token_count: 70
+query_token_count: 49
+ratio_step: 0.05
+ratio_values: 0.00, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1.00
+
+ratio: 0.00
+qaw_selected_count: 0
+qaw_selected_tokens: 
+random_selected_count: 0
+random_selected_tokens: 
+
+ratio: 0.05
+qaw_selected_count: 3
+qaw_selected_tokens:  the,  to,  eat
+random_selected_count: 3
+random_selected_tokens: Jack, erry,  likes
+
+ratio: 0.10
+qaw_selected_count: 7
+qaw_selected_tokens:  the,  to,  eat, .,  the,  to,  eat
+random_selected_count: 7
+random_selected_tokens:  in,  bananas,  to,  born,  to, erm,  likes
+
+ratio: 0.15
+qaw_selected_count: 10
+qaw_selected_tokens:  the,  to,  eat, .,  the,  to,  eat,  to,  eat,  to
+random_selected_count: 10
+random_selected_tokens:  was,  in,  UK,  born, ,,  and,  and,  likes,  born,  eat
+
+ratio: 0.20
+qaw_selected_count: 14
+qaw_selected_tokens: Jack,  the,  to,  eat, .,  the,  to,  eat,  to,  eat,  to,  eat,  to,  eat
+random_selected_count: 14
+random_selected_tokens: Jack,  was,  born, ,,  in,  USA,  China,  born,  in,  he,  eat,  born,  he, mons
+
+ratio: 0.25
+qaw_selected_count: 17
+qaw_selected_tokens: Jack,  the, ,,  to,  eat, .,  the, ,,  to,  eat, ,,  to,  eat,  to,  eat,  to,  eat
+random_selected_count: 17
+random_selected_tokens:  the, ,,  and,  apples,  the,  born,  likes,  to, J, erry,  was,  born,  likes,  wat,  born,  he,  eat
+
+ratio: 0.30
+qaw_selected_count: 21
+qaw_selected_tokens: Jack,  in,  the, ,,  to,  eat, .,  in,  the, ,,  to,  eat, ,,  to,  eat, ,,  to,  eat, ,,  to,  eat
+random_selected_count: 21
+random_selected_tokens: Jack,  and, erry,  in,  the,  likes,  to,  eat, ing,  born,  he,  was,  in, ,,  eat,  wat, elon,  in, ,,  and, mons
+
+ratio: 0.35
+qaw_selected_count: 24
+qaw_selected_tokens: Jack,  in,  the, ,,  to,  eat, .,  in,  the, ,,  to,  eat,  in, ,,  to,  eat,  in, ,,  to,  eat,  in, ,,  to,  eat
+random_selected_count: 24
+random_selected_tokens:  born,  likes,  apples, ., erry,  was,  and,  bananas, Li,  China, ,,  and,  to,  apples, J,  born,  in, ,,  eat, erm, Tom,  in,  he,  eat
+
+ratio: 0.40
+qaw_selected_count: 28
+qaw_selected_tokens: Jack,  in,  the, ,,  and,  to,  eat, .,  in,  the, ,,  and,  to,  eat,  in, ,,  and,  to,  eat,  in, ,,  and,  to,  eat,  in, ,,  to,  eat
+random_selected_count: 28
+random_selected_tokens: Jack,  was,  born,  UK, ,,  and,  he,  to,  eat, ., J, erry,  was,  in, ,,  to,  bananas, M,  was,  China,  he,  eat,  apples, erry,  to, elon,  was,  Canada
+
+ratio: 0.45
+qaw_selected_count: 31
+qaw_selected_tokens: Jack,  in,  the, ,,  and,  likes,  to,  eat, .,  in,  the, ,,  and,  likes,  to,  eat,  in, ,,  and,  to,  eat,  in, ,,  and,  to,  eat,  in, ,,  and,  to,  eat
+random_selected_count: 31
+random_selected_tokens:  in,  and,  eat,  was,  born,  in,  USA, ,,  to,  bananas, Li, M, ing,  was,  likes,  to,  eat,  apples,  in,  Japan,  and,  he,  to,  wat, Tom,  was,  born,  in,  Canada,  likes,  eat
+
+ratio: 0.50
+qaw_selected_count: 35
+qaw_selected_tokens: Jack,  in,  the, ,,  and,  likes,  to,  eat, .,  in,  the, ,,  and,  likes,  to,  eat,  in, ,,  and,  likes,  to,  eat,  in, ,,  and,  likes,  to,  eat,  wat,  in, ,,  and,  likes,  to,  eat
+random_selected_count: 35
+random_selected_tokens:  in,  the, ,,  and,  he,  eat,  apples,  born,  the,  USA, ,,  and,  she,  likes,  eat, M,  was,  China,  to,  eat, erry,  was,  born,  Japan, ,,  and,  he,  wat, erm, elon,  born, ,,  to,  eat,  le
+
+ratio: 0.55
+qaw_selected_count: 38
+qaw_selected_tokens: Jack,  in,  the,  UK, ,,  and,  likes,  to,  eat, .,  in,  the, ,,  and,  likes,  to,  eat,  in, ,,  and,  likes,  to,  eat,  in, ,,  and,  likes,  to,  eat,  wat, Tom,  in,  Canada, ,,  and,  likes,  to,  eat
+random_selected_count: 38
+random_selected_tokens:  was,  born,  in,  UK, ,,  he,  was,  the,  USA, ,,  and,  she,  likes,  to,  eat,  bananas, ing,  in,  China,  he,  likes,  apples, J, erry,  was,  born,  in,  and,  he,  eat,  wat, elon,  Canada,  and,  likes,  to,  eat,  le
+
+ratio: 0.60
+qaw_selected_count: 42
+qaw_selected_tokens: Jack,  born,  in,  the,  UK, ,,  and,  likes,  to,  eat, .,  born,  in,  the, ,,  and,  likes,  to,  eat,  born,  in,  China, ,,  and,  likes,  to,  eat,  in, ,,  and,  likes,  to,  eat,  wat, Tom,  in,  Canada, ,,  and,  likes,  to,  eat
+random_selected_count: 42
+random_selected_tokens:  was,  born,  the,  UK, ,,  he,  likes,  eat,  apples, ., J,  was,  born,  the,  USA,  and,  eat,  bananas, M,  born,  in, ,,  and,  he,  to, J, erry,  was,  Japan, ,,  likes,  to,  eat,  wat, erm, elon,  in,  Canada, ,,  to,  le, mons
+
+ratio: 0.65
+qaw_selected_count: 45
+qaw_selected_tokens: Jack,  was,  born,  in,  the,  UK, ,,  and,  likes,  to,  eat, .,  born,  in,  the, ,,  and,  likes,  to,  eat,  born,  in,  China, ,,  and,  likes,  to,  eat,  born,  in, ,,  and,  likes,  to,  eat,  wat, Tom,  born,  in,  Canada, ,,  and,  likes,  to,  eat
+random_selected_count: 45
+random_selected_tokens:  was,  born,  the, ,,  and,  he,  likes,  eat,  apples, .,  born,  the,  USA, ,,  and,  she,  eat,  bananas, M, ,,  and,  likes,  to,  eat,  apples, J, erry,  in,  Japan, ,,  and,  likes,  to,  wat, erm, elon, Tom,  was,  in,  Canada,  and,  he,  likes,  to,  le
+
+ratio: 0.70
+qaw_selected_count: 49
+qaw_selected_tokens: Jack,  was,  born,  in,  the,  UK, ,,  and,  likes,  to,  eat, .,  was,  born,  in,  the, ,,  and,  likes,  to,  eat,  was,  born,  in,  China, ,,  and,  likes,  to,  eat,  was,  born,  in, ,,  and,  likes,  to,  eat,  wat, Tom,  was,  born,  in,  Canada, ,,  and,  likes,  to,  eat
+random_selected_count: 49
+random_selected_tokens: Jack,  was,  in,  the, ,,  and,  he,  likes,  to,  eat, J, erry,  born,  the, ,,  and,  likes,  bananas, Li, M, ing,  was,  born,  in,  China, ,,  and,  likes,  to,  eat, J,  was,  born,  in,  Japan, ,,  and,  he,  eat,  wat, elon, Tom,  was,  in,  Canada,  and,  he,  to, mons
+
+ratio: 0.75
+qaw_selected_count: 52
+qaw_selected_tokens: Jack,  was,  born,  in,  the,  UK, ,,  and,  he,  likes,  to,  eat, .,  was,  born,  in,  the,  USA, ,,  and,  likes,  to,  eat,  was,  born,  in,  China, ,,  and,  likes,  to,  eat,  was,  born,  in,  Japan, ,,  and,  likes,  to,  eat,  wat, Tom,  was,  born,  in,  Canada, ,,  and,  likes,  to,  eat
+random_selected_count: 52
+random_selected_tokens: Jack,  born,  in,  and,  he,  likes,  eat,  apples, ., erry,  born,  in,  the,  USA, ,,  and,  she,  likes,  to,  eat,  bananas, Li, M, ing,  born,  in,  China, ,,  and,  likes,  to,  eat,  apples, erry,  in, ,,  and,  he,  likes,  to, elon, Tom,  was,  born,  in,  Canada, ,,  and,  likes,  to,  eat, mons
+
+ratio: 0.80
+qaw_selected_count: 56
+qaw_selected_tokens: Jack,  was,  born,  in,  the,  UK, ,,  and,  he,  likes,  to,  eat, .,  was,  born,  in,  the,  USA, ,,  and,  she,  likes,  to,  eat,  was,  born,  in,  China, ,,  and,  he,  likes,  to,  eat,  was,  born,  in,  Japan, ,,  and,  he,  likes,  to,  eat,  wat, Tom,  was,  born,  in,  Canada, ,,  and,  he,  likes,  to,  eat
+random_selected_count: 56
+random_selected_tokens: Jack,  was,  born,  in,  the, ,,  and,  to,  apples, ., J, erry,  born,  in,  the,  USA, ,,  and,  she,  likes,  to,  eat,  bananas, Li, M, ing,  was,  born,  in,  China,  and,  he,  likes,  to,  eat,  apples, J, erry,  was,  in,  Japan, ,,  and,  he,  likes,  to,  eat,  wat, erm,  Canada, ,,  and,  he,  to,  eat,  le
+
+ratio: 0.85
+qaw_selected_count: 59
+qaw_selected_tokens: Jack,  was,  born,  in,  the,  UK, ,,  and,  he,  likes,  to,  eat, ., J,  was,  born,  in,  the,  USA, ,,  and,  she,  likes,  to,  eat, M, ing,  was,  born,  in,  China, ,,  and,  he,  likes,  to,  eat,  was,  born,  in,  Japan, ,,  and,  he,  likes,  to,  eat,  wat, Tom,  was,  born,  in,  Canada, ,,  and,  he,  likes,  to,  eat
+random_selected_count: 59
+random_selected_tokens: Jack,  was,  born,  in,  the, ,,  and,  he,  likes,  to,  eat,  apples, J, erry,  was,  in,  the,  USA, ,,  and,  likes,  to,  eat,  bananas, Li, M, ing,  was,  born,  in,  China, ,,  and,  he,  eat,  apples, J, erry,  was,  born,  in,  Japan, ,,  he,  likes,  to,  wat, erm, elon, Tom,  was,  born,  in,  Canada, ,,  and,  he,  to,  le
+
+ratio: 0.90
+qaw_selected_count: 63
+qaw_selected_tokens: Jack,  was,  born,  in,  the,  UK, ,,  and,  he,  likes,  to,  eat, ., J, erry,  was,  born,  in,  the,  USA, ,,  and,  she,  likes,  to,  eat,  bananas, M, ing,  was,  born,  in,  China, ,,  and,  he,  likes,  to,  eat, J, erry,  was,  born,  in,  Japan, ,,  and,  he,  likes,  to,  eat,  wat, Tom,  was,  born,  in,  Canada, ,,  and,  he,  likes,  to,  eat
+random_selected_count: 63
+random_selected_tokens: Jack,  was,  born,  in,  the,  UK,  he,  to,  eat,  apples, ., J, erry,  was,  born,  in,  the,  USA, ,,  and,  she,  likes,  to,  eat,  bananas, Li, M, ing,  was,  born,  in,  China, ,,  and,  he,  to,  eat,  apples, J, erry,  was,  born,  in,  Japan, ,,  and,  he,  likes,  wat, erm, elon, Tom,  was,  born,  in,  Canada, ,,  and,  likes,  to,  eat,  le, mons
+
+ratio: 0.95
+qaw_selected_count: 66
+qaw_selected_tokens: Jack,  was,  born,  in,  the,  UK, ,,  and,  he,  likes,  to,  eat,  apples, ., J, erry,  was,  born,  in,  the,  USA, ,,  and,  she,  likes,  to,  eat,  bananas, M, ing,  was,  born,  in,  China, ,,  and,  he,  likes,  to,  eat,  apples, J, erry,  was,  born,  in,  Japan, ,,  and,  he,  likes,  to,  eat,  wat, Tom,  was,  born,  in,  Canada, ,,  and,  he,  likes,  to,  eat,  le
+random_selected_count: 66
+random_selected_tokens: Jack,  was,  born,  the,  UK, ,,  and,  he,  likes,  to,  eat, ., J,  was,  born,  in,  the,  USA, ,,  and,  she,  likes,  to,  eat,  bananas, Li, M, ing,  was,  born,  in,  China,  and,  he,  likes,  to,  eat,  apples, J, erry,  was,  born,  in,  Japan, ,,  and,  he,  likes,  to,  eat,  wat, erm, elon, Tom,  was,  born,  in,  Canada, ,,  and,  he,  likes,  to,  eat,  le, mons
+
+ratio: 1.00
+qaw_selected_count: 70
+qaw_selected_tokens: Jack,  was,  born,  in,  the,  UK, ,,  and,  he,  likes,  to,  eat,  apples, ., J, erry,  was,  born,  in,  the,  USA, ,,  and,  she,  likes,  to,  eat,  bananas, Li, M, ing,  was,  born,  in,  China, ,,  and,  he,  likes,  to,  eat,  apples, J, erry,  was,  born,  in,  Japan, ,,  and,  he,  likes,  to,  eat,  wat, erm, elon, Tom,  was,  born,  in,  Canada, ,,  and,  he,  likes,  to,  eat,  le, mons
+random_selected_count: 70
+random_selected_tokens: Jack,  was,  born,  in,  the,  UK, ,,  and,  he,  likes,  to,  eat,  apples, ., J, erry,  was,  born,  in,  the,  USA, ,,  and,  she,  likes,  to,  eat,  bananas, Li, M, ing,  was,  born,  in,  China, ,,  and,  he,  likes,  to,  eat,  apples, J, erry,  was,  born,  in,  Japan, ,,  and,  he,  likes,  to,  eat,  wat, erm, elon, Tom,  was,  born,  in,  Canada, ,,  and,  he,  likes,  to,  eat,  le, mons
+
