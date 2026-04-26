@@ -74,7 +74,10 @@ def parse_args() -> argparse.Namespace:
         "--max-chunk-tokens",
         type=int,
         default=128,
-        help="Maximum visible chunk tokens. Use 0 to disable truncation.",
+        help=(
+            "Deprecated compatibility option. Chunk-side heatmaps always use "
+            "the full selected chunk."
+        ),
     )
     parser.add_argument(
         "--max-query-tokens",
@@ -179,8 +182,8 @@ def plot_heatmap(
     output_path: str,
     dpi: int,
 ) -> None:
-    width = max(8.0, min(24.0, 0.18 * len(x_labels) + 4.0))
-    height = max(6.0, min(32.0, 0.16 * len(y_labels) + 3.0))
+    width = max(6.0, min(12.0, 0.12 * len(x_labels) + 4.0))
+    height = max(5.0, min(12.0, 0.10 * len(y_labels) + 3.0))
     fig, ax = plt.subplots(figsize=(width, height))
     im = ax.imshow(matrix, aspect="auto", cmap="YlGnBu", interpolation="nearest")
 
@@ -245,7 +248,6 @@ def visualize_dataset(
 
     chunk_token_ids = model_runner.encode_no_special(chunk_text)
     query_token_ids = model_runner.encode_no_special(query_source)
-    chunk_window = random_window(chunk_token_ids, args.max_chunk_tokens, rng)
     query_window = random_window(query_token_ids, args.max_query_tokens, rng)
 
     output_prefix = build_output_prefix(args.output_dir, dataset, sample_idx, chunk_idx)
@@ -255,8 +257,8 @@ def visualize_dataset(
 
     chunk_labels = decode_token_labels(
         model_runner.tokenizer,
-        chunk_window.token_ids,
-        offset=chunk_window.start,
+        chunk_token_ids,
+        offset=0,
     )
     query_labels = decode_token_labels(
         model_runner.tokenizer,
@@ -266,17 +268,17 @@ def visualize_dataset(
 
     query_matrix = cosine_similarity_matrix(
         model_runner=model_runner,
-        row_token_ids=chunk_window.token_ids,
+        row_token_ids=chunk_token_ids,
         col_token_ids=query_window.token_ids,
     )
     chunk_matrix = cosine_similarity_matrix(
         model_runner=model_runner,
-        row_token_ids=chunk_window.token_ids,
-        col_token_ids=chunk_window.token_ids,
+        row_token_ids=chunk_token_ids,
+        col_token_ids=chunk_token_ids,
     )
     query_mean_matrix = cosine_similarity_to_mean_query(
         model_runner=model_runner,
-        chunk_token_ids=chunk_window.token_ids,
+        chunk_token_ids=chunk_token_ids,
         query_token_ids=query_window.token_ids,
     )
 
@@ -319,17 +321,14 @@ def visualize_dataset(
         "chunk_count": len(doc_prompts),
         "question": str(example.get("question", "")),
         "answers": normalize_answers(example.get("answers", [])),
-        "chunk_token_total": chunk_window.total,
+        "uses_full_chunk_tokens": True,
+        "chunk_token_total": len(chunk_token_ids),
         "query_token_total": query_window.total,
-        "chunk_window": {
-            "start": chunk_window.start,
-            "end": chunk_window.end,
-            "token_count": len(chunk_window.token_ids),
-        },
         "query_window": {
             "start": query_window.start,
             "end": query_window.end,
             "token_count": len(query_window.token_ids),
+            "is_truncated": len(query_window.token_ids) < query_window.total,
         },
         "query_similarity": {
             "path": query_similarity_path,
@@ -352,7 +351,8 @@ def write_manifest(output_dir: str, args: argparse.Namespace, entries: List[Dict
     payload = {
         "seed": args.seed,
         "model_name": args.model_name,
-        "max_chunk_tokens": args.max_chunk_tokens,
+        "uses_full_chunk_tokens": True,
+        "deprecated_max_chunk_tokens": args.max_chunk_tokens,
         "max_query_tokens": args.max_query_tokens,
         "datasets": entries,
     }
