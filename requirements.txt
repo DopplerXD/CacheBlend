@@ -3,3 +3,4 @@ transformers>=4.38.0
 accelerate
 sentencepiece
 rouge-score
+matplotlib
