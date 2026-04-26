@@ -2,3 +2,5 @@
 # outputs/
 inputs/_cache/
 .DS_Store
+.Rproj.user
+graduation_project/analyse/
