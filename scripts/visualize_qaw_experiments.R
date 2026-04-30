@@ -331,6 +331,11 @@ curve_df <- summary_raw %>%
     dataset_score_label = factor(unname(dataset_score_labels[dataset]), levels = unname(dataset_score_labels)),
     model_label = factor(model, levels = model_levels),
     qaw_ratio = round(qaw_ratio, 4)
+  ) %>%
+  filter(
+    dataset != "musique" |
+      model != "Yi-6B" |
+      source_file == "202604212001_musique_curve.output"
   )
 
 if (nrow(curve_df) == 0) {
@@ -866,7 +871,7 @@ plot_quality_baseline_curves_yi <- function() {
     )
 
   yi_baseline_df <- baseline_points %>%
-    filter(model == "Yi-6B", method == "Full Prefill") %>%
+    filter(model == "Yi-6B", method %in% c("Full Reuse", "Full Prefill")) %>%
     transmute(
       dataset,
       dataset_label,
@@ -891,12 +896,12 @@ plot_quality_baseline_curves_yi <- function() {
       color = "#4D4D4D"
     ) +
     facet_wrap(~ dataset_label, scales = "free_y", nrow = 1) +
-    scale_color_manual(values = method_colors, breaks = c("Query-Aware", "Full Prefill")) +
-    scale_linetype_manual(values = method_linetypes, breaks = c("Query-Aware", "Full Prefill")) +
+    scale_color_manual(values = method_colors, breaks = c("Full Reuse", "Query-Aware", "Full Prefill")) +
+    scale_linetype_manual(values = method_linetypes, breaks = c("Full Reuse", "Query-Aware", "Full Prefill")) +
     scale_x_continuous(breaks = seq(0, 1, by = 0.2)) +
     labs(
       title = "Yi-6B Quality Baseline Curves",
-      subtitle = "Query-Aware score compared with the Full Prefill baseline",
+      subtitle = "Query-Aware score with Full Reuse and Full Prefill references",
       x = "Re-compute Ratio",
       y = "Score",
       color = "Method",
@@ -918,8 +923,8 @@ save_plot(
   "Yi-6B Quality Baseline Curves",
   "Faceted line chart",
   "Yi-6B, three datasets, score only",
-  "Shows how score changes with recompute ratio, with Full Prefill used as the quality baseline.",
-  "Useful for discussing how much quality Query-Aware recovers relative to the best-quality baseline."
+  "Shows how score changes with recompute ratio, with both Full Reuse and Full Prefill shown as references.",
+  "Useful for discussing both quality recovery over reuse and the remaining gap to full prefill."
 )
 
 plot_speed_baseline_curves_yi <- function() {
@@ -939,7 +944,7 @@ plot_speed_baseline_curves_yi <- function() {
     )
 
   yi_baseline_df <- baseline_points %>%
-    filter(model == "Yi-6B", method == "Full Reuse") %>%
+    filter(model == "Yi-6B", method %in% c("Full Reuse", "Full Prefill")) %>%
     transmute(
       dataset,
       dataset_label,
@@ -964,12 +969,12 @@ plot_speed_baseline_curves_yi <- function() {
       color = "#4D4D4D"
     ) +
     facet_wrap(~ dataset_label, scales = "free_y", nrow = 1) +
-    scale_color_manual(values = method_colors, breaks = c("Full Reuse", "Query-Aware")) +
-    scale_linetype_manual(values = method_linetypes, breaks = c("Full Reuse", "Query-Aware")) +
+    scale_color_manual(values = method_colors, breaks = c("Full Reuse", "Query-Aware", "Full Prefill")) +
+    scale_linetype_manual(values = method_linetypes, breaks = c("Full Reuse", "Query-Aware", "Full Prefill")) +
     scale_x_continuous(breaks = seq(0, 1, by = 0.2)) +
     labs(
       title = "Yi-6B Speed Baseline Curves",
-      subtitle = "Query-Aware TTFT compared with the Full Reuse baseline",
+      subtitle = "Query-Aware TTFT with Full Reuse and Full Prefill references",
       x = "Re-compute Ratio",
       y = "TTFT (s)",
       color = "Method",
@@ -991,8 +996,8 @@ save_plot(
   "Yi-6B Speed Baseline Curves",
   "Faceted line chart",
   "Yi-6B, three datasets, TTFT only",
-  "Shows how TTFT changes with recompute ratio, with Full Reuse used as the speed baseline.",
-  "Useful for discussing the first-token latency cost of quality recovery."
+  "Shows how TTFT changes with recompute ratio, with both Full Reuse and Full Prefill shown as references.",
+  "Useful for discussing where Query-Aware sits between the fastest and the slowest first-token baselines."
 )
 #
 # save_plot(

@@ -5,7 +5,7 @@
 - 数据来源：`/Users/doppler/Documents/Github/CacheBlend/outputs`
 - 图表输出目录：`/Users/doppler/Documents/Github/CacheBlend/graduation_project/analyse/qaw_visualizations/figures`
 - 脚本路径：`/Users/doppler/Documents/Github/CacheBlend/scripts/visualize_qaw_experiments.R`
-- 生成时间：`2026-04-26 14:59:45 CST`
+- 生成时间：`2026-04-26 16:53:34 CST`
 
 ## qaw-ratio 选择
 
@@ -40,16 +40,16 @@
 - 英文图题：Yi-6B Quality Baseline Curves
 - 图表类型：Faceted line chart
 - 数据范围：Yi-6B, three datasets, score only
-- 作用/意义：Shows how score changes with recompute ratio, with Full Prefill used as the quality baseline.
-- 论文使用建议：Useful for discussing how much quality Query-Aware recovers relative to the best-quality baseline.
+- 作用/意义：Shows how score changes with recompute ratio, with both Full Reuse and Full Prefill shown as references.
+- 论文使用建议：Useful for discussing both quality recovery over reuse and the remaining gap to full prefill.
 
 ### 04. `fig03_yi6b_speed_baseline_curves.png`
 
 - 英文图题：Yi-6B Speed Baseline Curves
 - 图表类型：Faceted line chart
 - 数据范围：Yi-6B, three datasets, TTFT only
-- 作用/意义：Shows how TTFT changes with recompute ratio, with Full Reuse used as the speed baseline.
-- 论文使用建议：Useful for discussing the first-token latency cost of quality recovery.
+- 作用/意义：Shows how TTFT changes with recompute ratio, with both Full Reuse and Full Prefill shown as references.
+- 论文使用建议：Useful for discussing where Query-Aware sits between the fastest and the slowest first-token baselines.
 
 ### 05. `fig06_yi6b_ttft_total_quality.png`
 
