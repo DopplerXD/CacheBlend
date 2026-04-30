@@ -1,0 +1,38 @@
+{
+  "model": "/root/models/Yi-6B",
+  "datasets": [
+    "musique",
+    "wikimqa"
+  ],
+  "count_per_dataset": 100,
+  "methods": [
+    "random",
+    "chunk_head",
+    "embedding_max",
+    "embedding_mean_query",
+    "embedding_last_query",
+    "query_attention"
+  ],
+  "ratios": [
+    0.0,
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9,
+    1.0
+  ],
+  "evidence_window": 5,
+  "attention_layer": -1,
+  "processed_samples": 0,
+  "skipped_samples": 0,
+  "coverage_csv": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/evidence_coverage_by_sample.csv",
+  "aggregate_csv": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/evidence_coverage_summary.csv",
+  "sample_csv": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/evidence_samples.csv",
+  "skipped_csv": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/skipped_samples.csv",
+  "figures": []
+}

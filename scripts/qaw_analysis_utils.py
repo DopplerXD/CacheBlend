@@ -19,7 +19,7 @@ EXAMPLE_DIR = os.path.join(ROOT_DIR, "example")
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 if EXAMPLE_DIR not in sys.path:
-    sys.path.insert(0, EXAMPLE_DIR)
+    sys.path.append(EXAMPLE_DIR)
 
 from blend_curve_common import DATASET_SPECS, build_sample_parts, load_dataset
 from config import RuntimeConfig
