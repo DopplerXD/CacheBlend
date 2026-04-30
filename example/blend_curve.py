@@ -40,6 +40,13 @@ def parse_args() -> argparse.Namespace:
                         choices=["packed", "window"],
                         default="packed",
                         help="QAW 重算方式：packed 为原实现，window 为左侧16token窗口重算")
+    parser.add_argument(
+        "--qaw-variant",
+        choices=["default", "embedding_max", "embedding_mean_query",
+                 "embedding_last_query"],
+        default="default",
+        help="QAW token 打分变体；default 等同 embedding_max",
+    )
     parser.add_argument("--suffix-len",
                         type=int,
                         default=0,
@@ -91,6 +98,7 @@ def main() -> None:
         "qaw_ratio_max": args.qaw_ratio_max,
         "qaw_ratio_step": args.qaw_ratio_step,
         "qaw_type": args.qaw_type,
+        "qaw_variant": args.qaw_variant,
         "suffix_len": 0,
         "ratio_group_count": len(ratios),
         "curve_mode": "ratio_only",
@@ -116,6 +124,7 @@ def main() -> None:
         ratio_values=ratios,
         suffix_values=[0],
         qaw_type=args.qaw_type,
+        qaw_variant=args.qaw_variant,
     )
 
     total_groups = len(ratios)
@@ -128,6 +137,7 @@ def main() -> None:
             suffix_len=0,
         )
         payload["ended_at"] = utc8_now_str()
+        payload["qaw_variant"] = args.qaw_variant
         output_writer.append_json(payload)
         print(
             f"[curve] 组完成 {group_idx}/{total_groups}, "

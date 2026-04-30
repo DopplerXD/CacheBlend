@@ -17,6 +17,9 @@ class RuntimeConfig:
     device: str = os.getenv("DEVICE", "cuda")
     # 模型权重 dtype：bfloat16 / float16 / float32。
     model_dtype: str = os.getenv("MODEL_DTYPE", "bfloat16")
+    # Transformers attention 后端：auto / eager / sdpa / flash_attention_2。
+    # 需要输出 attention weights 的分析脚本会强制使用 eager。
+    attn_implementation: str = os.getenv("ATTN_IMPLEMENTATION", "auto")
 
     # 生成参数（MVP 默认贪心）。
     max_new_tokens: int = int(os.getenv("MAX_NEW_TOKENS", "16"))

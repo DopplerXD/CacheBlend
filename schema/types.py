@@ -25,7 +25,8 @@ class GenerateRequest:
     suffix_len: int = 16
     # query-aware 策略下可显式提供 query 文本。
     query_text: str = ""
-    # query-aware 子变体：default / no_suffix / random_topk
+    # query-aware 子变体：
+    # default/embedding_max / embedding_mean_query / embedding_last_query / no_suffix / random_topk
     qaw_variant: str = "default"
     # chunk-aware QAW 重算执行方式：packed / window。
     qaw_type: str = "packed"

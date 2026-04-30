@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import importlib.util
 import inspect
+import os
 from typing import Any, List, Optional, Sequence, Tuple
 
 import torch
@@ -23,7 +25,8 @@ def _resolve_dtype(dtype_name: str) -> torch.dtype:
 class HFModelRunner:
     """对外提供 token 编解码与前向推理接口。"""
 
-    def __init__(self, model_name: str, device: str, model_dtype: str, logger):
+    def __init__(self, model_name: str, device: str, model_dtype: str, logger,
+                 attn_implementation: Optional[str] = None):
         self.logger = logger
         self.model_name = model_name
 
@@ -41,16 +44,42 @@ class HFModelRunner:
         self.tokenizer = AutoTokenizer.from_pretrained(model_name,
                                                        trust_remote_code=True)
 
-        self.logger.info("加载模型: %s, device=%s, dtype=%s", model_name,
-                         self.device, str(torch_dtype))
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            trust_remote_code=True,
-            torch_dtype=torch_dtype,
-            low_cpu_mem_usage=True,
-        )
+        requested_attn_impl = (
+            attn_implementation or os.getenv("ATTN_IMPLEMENTATION", "auto")
+        ).strip().lower()
+        model_kwargs = {
+            "trust_remote_code": True,
+            "torch_dtype": torch_dtype,
+            "low_cpu_mem_usage": True,
+        }
+        active_attn_impl = self._resolve_attn_implementation(requested_attn_impl)
+        if active_attn_impl:
+            model_kwargs["attn_implementation"] = active_attn_impl
+
+        self.logger.info("加载模型: %s, device=%s, dtype=%s, attn_impl=%s",
+                         model_name, self.device, str(torch_dtype),
+                         active_attn_impl or "auto")
+        try:
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                **model_kwargs,
+            )
+        except (TypeError, ValueError) as exc:
+            if "attn" not in str(exc).lower():
+                raise
+            self.logger.warning(
+                "attention 后端 %s 加载失败，回退 Transformers 默认实现: %s",
+                active_attn_impl or requested_attn_impl,
+                exc,
+            )
+            model_kwargs.pop("attn_implementation", None)
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                **model_kwargs,
+            )
         self.model.to(self.device)
         self.model.eval()
+        self.attn_implementation = active_attn_impl or "auto"
         self._supports_num_logits_to_keep = (
             "num_logits_to_keep" in inspect.signature(self.model.forward).parameters)
 
@@ -68,6 +97,27 @@ class HFModelRunner:
 
     def eos_token_id(self) -> int:
         return self.tokenizer.eos_token_id
+
+    def _resolve_attn_implementation(self, requested: str) -> Optional[str]:
+        """将配置中的 attention 后端转换为 Transformers 参数。"""
+        if requested in ("", "auto", "default"):
+            return None
+        if requested == "flash_attention_2":
+            if self.device.type != "cuda":
+                self.logger.warning(
+                    "flash_attention_2 需要 CUDA，当前 device=%s，回退默认实现",
+                    self.device,
+                )
+                return None
+            if importlib.util.find_spec("flash_attn") is None:
+                self.logger.warning(
+                    "未检测到 flash_attn 包，flash_attention_2 回退默认实现")
+                return None
+            return "flash_attention_2"
+        if requested in ("eager", "sdpa"):
+            return requested
+        self.logger.warning("未知 ATTN_IMPLEMENTATION=%s，回退默认实现", requested)
+        return None
 
     def _find_rotary_inv_freq(self) -> torch.Tensor:
         """查找 LLaMA/Yi/Qwen 系 RoPE 的 inv_freq。"""

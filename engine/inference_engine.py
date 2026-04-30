@@ -78,9 +78,21 @@ class InferenceEngine:
             score = layer_score if score is None else (score + layer_score)
         return score
 
+    @staticmethod
+    def _normalize_qaw_score_variant(qaw_variant: str) -> str:
+        """归一化 query-aware selector 变体名。"""
+        variant = (qaw_variant or "embedding_max").lower()
+        if variant in ("default", "no_suffix"):
+            return "embedding_max"
+        if variant in ("embedding_max", "embedding_mean_query",
+                       "embedding_last_query", "random_topk"):
+            return variant
+        raise ValueError(f"不支持的 qaw_variant: {qaw_variant}")
+
     def _compute_query_aware_scores(self, prompt_token_ids: List[int],
                                     query_token_ids: List[int],
-                                    overlap_len: int) -> torch.Tensor:
+                                    overlap_len: int,
+                                    qaw_variant: str = "embedding_max") -> torch.Tensor:
         """计算 query-aware token 相关性分数（embedding cosine）。"""
         if overlap_len <= 0:
             return torch.zeros(0, device=self.model_runner.device)
@@ -89,11 +101,24 @@ class InferenceEngine:
             # 若未提供 query，回退为 0 分向量（由尾部强制重算兜底）。
             return torch.zeros(overlap_len, device=self.model_runner.device)
 
+        score_variant = self._normalize_qaw_score_variant(qaw_variant)
+        if score_variant == "random_topk":
+            return torch.zeros(overlap_len, device=self.model_runner.device)
+
         cand_emb = self.model_runner.lookup_token_embeddings(
             prompt_token_ids[:overlap_len])
         query_emb = self.model_runner.lookup_token_embeddings(query_token_ids)
         cand_emb = torch.nn.functional.normalize(cand_emb, dim=-1)
         query_emb = torch.nn.functional.normalize(query_emb, dim=-1)
+        if score_variant == "embedding_mean_query":
+            query_vec = torch.nn.functional.normalize(
+                query_emb.mean(dim=0, keepdim=True),
+                dim=-1,
+            )
+            return (cand_emb @ query_vec.transpose(0, 1)).squeeze(1)
+        if score_variant == "embedding_last_query":
+            query_vec = query_emb[-1:].contiguous()
+            return (cand_emb @ query_vec.transpose(0, 1)).squeeze(1)
         sim = cand_emb @ query_emb.transpose(0, 1)
         return sim.max(dim=1).values
 
@@ -240,6 +265,16 @@ class InferenceEngine:
         if chunk_len == 0 or req.recomp_ratio <= 0:
             return torch.zeros(0, dtype=torch.long, device=self.model_runner.device)
 
+        qaw_variant = (req.qaw_variant or "default").lower()
+        if qaw_variant == "random_topk":
+            generator = torch.Generator(device=self.model_runner.device)
+            generator.manual_seed(
+                self._derive_stable_seed(req.session_id, req.qaw_random_seed))
+            topk_num = min(chunk_len, max(1, int(chunk_len * req.recomp_ratio)))
+            return torch.sort(
+                torch.randperm(chunk_len, device=self.model_runner.device,
+                               generator=generator)[:topk_num]).values
+
         query_text = req.query_text.strip() or req.suffix_text.strip()
         query_token_ids = (self.model_runner.encode_no_special(query_text)
                            if query_text else [])
@@ -247,16 +282,8 @@ class InferenceEngine:
             prompt_token_ids=chunk_token_ids,
             query_token_ids=query_token_ids,
             overlap_len=chunk_len,
+            qaw_variant=qaw_variant,
         )
-        qaw_variant = (req.qaw_variant or "default").lower()
-        if qaw_variant == "random_topk":
-            generator = torch.Generator(device=scores.device)
-            generator.manual_seed(
-                self._derive_stable_seed(req.session_id, req.qaw_random_seed))
-            topk_num = min(chunk_len, max(1, int(chunk_len * req.recomp_ratio)))
-            return torch.sort(
-                torch.randperm(chunk_len, device=scores.device,
-                               generator=generator)[:topk_num]).values
 
         topk_num = min(chunk_len, max(1, int(chunk_len * req.recomp_ratio)))
         return torch.sort(torch.topk(scores, k=topk_num).indices).values
@@ -649,12 +676,13 @@ class InferenceEngine:
             tail_start = max(0, len(prompt_token_ids) - max(req.suffix_len, 1))
             query_token_ids = prompt_token_ids[tail_start:]
 
+        qaw_variant = (req.qaw_variant or "default").lower()
         scores = self._compute_query_aware_scores(
             prompt_token_ids=prompt_token_ids,
             query_token_ids=query_token_ids,
             overlap_len=overlap_len,
+            qaw_variant=qaw_variant,
         )
-        qaw_variant = (req.qaw_variant or "default").lower()
         random_topk = (qaw_variant == "random_topk")
         suffix_len = 0 if qaw_variant == "no_suffix" else req.suffix_len
         random_seed = self._derive_stable_seed(req.session_id, req.qaw_random_seed)
