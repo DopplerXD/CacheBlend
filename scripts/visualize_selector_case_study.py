@@ -48,7 +48,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ratio", type=float, default=0.2)
     parser.add_argument("--evidence-window", type=int, default=5)
     parser.add_argument("--attention-layer", type=int, default=-1)
-    parser.add_argument("--max-prompt-tokens", type=int, default=4096)
+    parser.add_argument(
+        "--max-prompt-tokens",
+        type=int,
+        default=0,
+        help="0 means no prompt-length cap; set a positive value to skip long samples",
+    )
     parser.add_argument("--window-tokens", type=int, default=180)
     parser.add_argument(
         "--allow-attention-reference",
@@ -212,7 +217,7 @@ def main() -> None:
                 sample=sample,
                 attention_layer=args.attention_layer,
             )
-        except RuntimeError as exc:
+        except (RuntimeError, ValueError) as exc:
             skipped.append({
                 "sample_idx": sample.sample_idx,
                 "sample_id": sample.sample_id,

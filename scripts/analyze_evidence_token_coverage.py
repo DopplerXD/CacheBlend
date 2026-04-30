@@ -63,13 +63,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--methods", default=",".join(DEFAULT_METHODS))
     parser.add_argument("--evidence-window", type=int, default=5)
     parser.add_argument("--attention-layer", type=int, default=-1)
-    parser.add_argument("--max-prompt-tokens", type=int, default=4096)
+    parser.add_argument(
+        "--max-prompt-tokens",
+        type=int,
+        default=0,
+        help="0 means no prompt-length cap; set a positive value to cap analysis length",
+    )
     parser.add_argument(
         "--skip-long-samples",
         action="store_true",
         help=(
-            "skip samples longer than --max-prompt-tokens; by default long "
-            "samples are truncated for lightweight analysis"
+            "compatibility flag; when --max-prompt-tokens is positive, long "
+            "samples are skipped unless --truncate-long-samples is set"
+        ),
+    )
+    parser.add_argument(
+        "--truncate-long-samples",
+        action="store_true",
+        help=(
+            "when --max-prompt-tokens is positive, truncate chunk tokens "
+            "instead of skipping long samples"
         ),
     )
     parser.add_argument("--bar-ratio", type=float, default=0.6)
@@ -165,6 +178,101 @@ def plot_recall_curve(aggregate: Sequence[Dict], output_dir: str,
     return path
 
 
+def plot_metric_curve(aggregate: Sequence[Dict],
+                      output_dir: str,
+                      dataset_order: Sequence[str],
+                      metric_key: str,
+                      metric_label: str,
+                      filename: str) -> str:
+    datasets = list(dataset_order)
+    methods = sorted({row["method"] for row in aggregate})
+    fig, axes = plt.subplots(
+        1,
+        max(1, len(datasets)),
+        figsize=(6.2 * max(1, len(datasets)), 4.8),
+        squeeze=False,
+    )
+    for ax, dataset in zip(axes[0], datasets):
+        for method in methods:
+            rows = [
+                row for row in aggregate
+                if row["dataset"] == dataset and row["method"] == method
+            ]
+            if not rows:
+                continue
+            rows = sorted(rows, key=lambda item: float(item["ratio"]))
+            ax.plot(
+                [float(row["ratio"]) for row in rows],
+                [float(row[metric_key]) for row in rows],
+                marker="o",
+                linewidth=1.6,
+                label=method,
+            )
+        ax.set_title(f"{dataset}: {metric_label}")
+        ax.set_xlabel("Top-K Ratio")
+        ax.set_ylabel(metric_label)
+        ax.set_ylim(0, 1)
+        ax.grid(alpha=0.25)
+    axes[0][-1].legend(loc="center left", bbox_to_anchor=(1.02, 0.5))
+    fig.tight_layout()
+    path = os.path.join(output_dir, filename)
+    fig.savefig(path, dpi=240, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def plot_recall_heatmaps(aggregate: Sequence[Dict],
+                         output_dir: str,
+                         dataset_order: Sequence[str]) -> List[str]:
+    paths = []
+    methods = sorted({row["method"] for row in aggregate})
+    for dataset in dataset_order:
+        rows = [row for row in aggregate if row["dataset"] == dataset]
+        if not rows:
+            continue
+        ratios = sorted({float(row["ratio"]) for row in rows})
+        values = []
+        for method in methods:
+            method_values = []
+            for ratio in ratios:
+                match = [
+                    row for row in rows
+                    if row["method"] == method and abs(float(row["ratio"]) - ratio) < 1e-9
+                ]
+                method_values.append(
+                    float(match[0]["mean_evidence_recall"]) if match else 0.0
+                )
+            values.append(method_values)
+
+        fig, ax = plt.subplots(figsize=(max(7.5, 0.72 * len(ratios)), 0.52 * len(methods) + 2.5))
+        image = ax.imshow(values, aspect="auto", vmin=0, vmax=1, cmap="viridis")
+        ax.set_title(f"{dataset}: Evidence Recall Heatmap")
+        ax.set_xlabel("Top-K Ratio")
+        ax.set_ylabel("Selector")
+        ax.set_xticks(range(len(ratios)))
+        ax.set_xticklabels([f"{ratio:.1f}" for ratio in ratios])
+        ax.set_yticks(range(len(methods)))
+        ax.set_yticklabels(methods)
+        for row_idx, method_values in enumerate(values):
+            for col_idx, value in enumerate(method_values):
+                ax.text(
+                    col_idx,
+                    row_idx,
+                    f"{value:.2f}",
+                    ha="center",
+                    va="center",
+                    color="white" if value < 0.55 else "black",
+                    fontsize=8,
+                )
+        fig.colorbar(image, ax=ax, label="Mean Evidence Recall")
+        fig.tight_layout()
+        path = os.path.join(output_dir, f"evidence_recall_heatmap_{dataset}.png")
+        fig.savefig(path, dpi=240, bbox_inches="tight")
+        plt.close(fig)
+        paths.append(path)
+    return paths
+
+
 def build_dataset_summary(sample_rows: Sequence[Dict],
                           skipped_rows: Sequence[Dict],
                           dataset_order: Sequence[str]) -> List[Dict]:
@@ -245,6 +353,11 @@ def main() -> None:
     coverage_rows: List[Dict] = []
     sample_rows: List[Dict] = []
     skipped_rows: List[Dict] = []
+    truncate_long_samples = (
+        args.max_prompt_tokens > 0
+        and args.truncate_long_samples
+        and not args.skip_long_samples
+    )
 
     for _, sample in iter_tokenized_samples(
         model_runner=model_runner,
@@ -252,7 +365,7 @@ def main() -> None:
         count=args.count,
         max_prompt_tokens=args.max_prompt_tokens,
         skipped_rows=skipped_rows,
-        truncate_long_samples=not args.skip_long_samples,
+        truncate_long_samples=truncate_long_samples,
     ):
         evidence = answer_evidence_indices(
             model_runner=model_runner,
@@ -294,7 +407,7 @@ def main() -> None:
                         sample=sample,
                         variant=method,
                     )
-        except RuntimeError as exc:
+        except (RuntimeError, ValueError) as exc:
             skipped_rows.append({
                 "dataset": sample.dataset,
                 "sample_idx": sample.sample_idx,
@@ -353,6 +466,15 @@ def main() -> None:
     figure_paths = []
     if aggregate:
         figure_paths.append(plot_recall_curve(aggregate, output_dir, datasets))
+        figure_paths.append(plot_metric_curve(
+            aggregate=aggregate,
+            output_dir=output_dir,
+            dataset_order=datasets,
+            metric_key="mean_evidence_hit",
+            metric_label="Mean Evidence Hit",
+            filename="evidence_hit_curve.png",
+        ))
+        figure_paths.extend(plot_recall_heatmaps(aggregate, output_dir, datasets))
         bar_path = plot_bar_at_ratio(aggregate, output_dir, args.bar_ratio)
         if bar_path:
             figure_paths.append(bar_path)
@@ -369,7 +491,7 @@ def main() -> None:
         "evidence_window": args.evidence_window,
         "attention_layer": args.attention_layer,
         "max_prompt_tokens": args.max_prompt_tokens,
-        "truncate_long_samples": not args.skip_long_samples,
+        "truncate_long_samples": truncate_long_samples,
         "processed_samples": len(sample_rows),
         "skipped_samples": len(skipped_rows),
         "dataset_summary": dataset_summary,

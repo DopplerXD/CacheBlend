@@ -50,13 +50,26 @@ def parse_args() -> argparse.Namespace:
         default="0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0",
     )
     parser.add_argument("--attention-layer", type=int, default=-1)
-    parser.add_argument("--max-prompt-tokens", type=int, default=4096)
+    parser.add_argument(
+        "--max-prompt-tokens",
+        type=int,
+        default=0,
+        help="0 means no prompt-length cap; set a positive value to cap analysis length",
+    )
     parser.add_argument(
         "--skip-long-samples",
         action="store_true",
         help=(
-            "skip samples longer than --max-prompt-tokens; by default long "
-            "samples are truncated for lightweight analysis"
+            "compatibility flag; when --max-prompt-tokens is positive, long "
+            "samples are skipped unless --truncate-long-samples is set"
+        ),
+    )
+    parser.add_argument(
+        "--truncate-long-samples",
+        action="store_true",
+        help=(
+            "when --max-prompt-tokens is positive, truncate chunk tokens "
+            "instead of skipping long samples"
         ),
     )
     parser.add_argument(
@@ -213,6 +226,11 @@ def main() -> None:
     sample_rows: List[Dict] = []
     overlap_rows: List[Dict] = []
     skipped_rows: List[Dict] = []
+    truncate_long_samples = (
+        args.max_prompt_tokens > 0
+        and args.truncate_long_samples
+        and not args.skip_long_samples
+    )
 
     for _, sample in iter_tokenized_samples(
         model_runner=model_runner,
@@ -220,7 +238,7 @@ def main() -> None:
         count=args.count,
         max_prompt_tokens=args.max_prompt_tokens,
         skipped_rows=skipped_rows,
-        truncate_long_samples=not args.skip_long_samples,
+        truncate_long_samples=truncate_long_samples,
     ):
         query_token_ids = (
             model_runner.encode_no_special(sample.query_source)
@@ -238,7 +256,7 @@ def main() -> None:
                 sample=sample,
                 attention_layer=args.attention_layer,
             )
-        except RuntimeError as exc:
+        except (RuntimeError, ValueError) as exc:
             skipped_rows.append({
                 "dataset": sample.dataset,
                 "sample_idx": sample.sample_idx,
@@ -299,7 +317,7 @@ def main() -> None:
         "similarity_variant": args.similarity_variant,
         "attention_layer": args.attention_layer,
         "max_prompt_tokens": args.max_prompt_tokens,
-        "truncate_long_samples": not args.skip_long_samples,
+        "truncate_long_samples": truncate_long_samples,
         "processed_samples": len(sample_rows),
         "skipped_samples": len(skipped_rows),
         "dataset_summary": dataset_summary,
