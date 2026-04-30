@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from qaw_analysis_utils import (
     EMBEDDING_VARIANTS,
     build_model_runner,
+    clear_cuda_cache,
     compute_embedding_scores,
     compute_query_attention_scores,
     iter_tokenized_samples,
@@ -53,23 +54,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-prompt-tokens",
         type=int,
-        default=0,
-        help="0 means no prompt-length cap; set a positive value to cap analysis length",
+        default=4096,
+        help="positive values cap analysis length; 0 means no prompt-length cap",
     )
     parser.add_argument(
         "--skip-long-samples",
         action="store_true",
         help=(
-            "compatibility flag; when --max-prompt-tokens is positive, long "
-            "samples are skipped unless --truncate-long-samples is set"
+            "when --max-prompt-tokens is positive, skip long samples instead "
+            "of truncating chunk tokens"
         ),
     )
     parser.add_argument(
         "--truncate-long-samples",
         action="store_true",
         help=(
-            "when --max-prompt-tokens is positive, truncate chunk tokens "
-            "instead of skipping long samples"
+            "compatibility flag; truncating long chunk tokens is now the "
+            "default when --max-prompt-tokens is positive"
         ),
     )
     parser.add_argument(
@@ -228,7 +229,6 @@ def main() -> None:
     skipped_rows: List[Dict] = []
     truncate_long_samples = (
         args.max_prompt_tokens > 0
-        and args.truncate_long_samples
         and not args.skip_long_samples
     )
 
@@ -257,10 +257,13 @@ def main() -> None:
                 attention_layer=args.attention_layer,
             )
         except (RuntimeError, ValueError) as exc:
+            clear_cuda_cache()
             skipped_rows.append({
                 "dataset": sample.dataset,
                 "sample_idx": sample.sample_idx,
                 "sample_id": sample.sample_id,
+                "prompt_tokens": len(sample.prompt_token_ids),
+                "chunk_tokens": len(sample.chunk_token_ids),
                 "reason": str(exc),
             })
             continue

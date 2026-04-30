@@ -18,6 +18,7 @@ from qaw_analysis_utils import (
     answer_evidence_indices,
     build_model_runner,
     chunk_head_indices,
+    clear_cuda_cache,
     compute_embedding_scores,
     compute_query_attention_scores,
     decode_token_labels,
@@ -51,8 +52,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-prompt-tokens",
         type=int,
-        default=0,
-        help="0 means no prompt-length cap; set a positive value to skip long samples",
+        default=4096,
+        help="positive values cap analysis length; 0 means no prompt-length cap",
+    )
+    parser.add_argument(
+        "--skip-long-samples",
+        action="store_true",
+        help=(
+            "when --max-prompt-tokens is positive, skip long samples instead "
+            "of truncating chunk tokens"
+        ),
     )
     parser.add_argument("--window-tokens", type=int, default=180)
     parser.add_argument(
@@ -191,6 +200,7 @@ def main() -> None:
     args = parse_args()
     ensure_dir(args.output_dir)
     cfg, model_runner = build_model_runner(args.model_name, attn_implementation="eager")
+    truncate_long_samples = args.max_prompt_tokens > 0 and not args.skip_long_samples
 
     best_case = None
     best_score = -1.0
@@ -200,6 +210,8 @@ def main() -> None:
         datasets=[args.dataset],
         count=args.scan_limit,
         max_prompt_tokens=args.max_prompt_tokens,
+        skipped_rows=skipped,
+        truncate_long_samples=truncate_long_samples,
     ):
         query_token_ids = (
             model_runner.encode_no_special(sample.query_source)
@@ -218,9 +230,12 @@ def main() -> None:
                 attention_layer=args.attention_layer,
             )
         except (RuntimeError, ValueError) as exc:
+            clear_cuda_cache()
             skipped.append({
                 "sample_idx": sample.sample_idx,
                 "sample_id": sample.sample_id,
+                "prompt_tokens": len(sample.prompt_token_ids),
+                "chunk_tokens": len(sample.chunk_token_ids),
                 "reason": str(exc),
             })
             continue
@@ -317,6 +332,8 @@ def main() -> None:
         "sample_idx": sample.sample_idx,
         "sample_id": sample.sample_id,
         "ratio": args.ratio,
+        "max_prompt_tokens": args.max_prompt_tokens,
+        "truncate_long_samples": truncate_long_samples,
         "question": sample.query_source,
         "answers": sample.answers,
         "prompt_tokens": len(sample.prompt_token_ids),

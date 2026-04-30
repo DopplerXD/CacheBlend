@@ -111,6 +111,11 @@ def build_model_runner(model_name: str, attn_implementation: str) -> Tuple[Runti
     return cfg, runner
 
 
+def clear_cuda_cache() -> None:
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 def stable_seed(*parts: object) -> int:
     payload = "::".join(str(part) for part in parts)
     digest = hashlib.sha256(payload.encode("utf-8")).digest()

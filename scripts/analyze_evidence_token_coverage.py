@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Dict, List, Sequence, Tuple
 
 import matplotlib
@@ -19,6 +19,7 @@ from qaw_analysis_utils import (
     answer_evidence_indices,
     build_model_runner,
     chunk_head_indices,
+    clear_cuda_cache,
     compute_embedding_scores,
     compute_hidden_scores,
     compute_query_attention_scores,
@@ -66,23 +67,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-prompt-tokens",
         type=int,
-        default=0,
-        help="0 means no prompt-length cap; set a positive value to cap analysis length",
+        default=4096,
+        help="positive values cap analysis length; 0 means no prompt-length cap",
     )
     parser.add_argument(
         "--skip-long-samples",
         action="store_true",
         help=(
-            "compatibility flag; when --max-prompt-tokens is positive, long "
-            "samples are skipped unless --truncate-long-samples is set"
+            "when --max-prompt-tokens is positive, skip long samples instead "
+            "of truncating chunk tokens"
         ),
     )
     parser.add_argument(
         "--truncate-long-samples",
         action="store_true",
         help=(
-            "when --max-prompt-tokens is positive, truncate chunk tokens "
-            "instead of skipping long samples"
+            "compatibility flag; truncating long chunk tokens is now the "
+            "default when --max-prompt-tokens is positive"
         ),
     )
     parser.add_argument("--bar-ratio", type=float, default=0.6)
@@ -273,6 +274,53 @@ def plot_recall_heatmaps(aggregate: Sequence[Dict],
     return paths
 
 
+def compact_skip_reason(reason: str) -> str:
+    reason = str(reason or "")
+    if "CUDA out of memory" in reason:
+        return "cuda_oom"
+    if "answer evidence not found" in reason:
+        return "no_answer_evidence"
+    if "did not return attentions" in reason:
+        return "no_attention_weights"
+    if "prompt exceeds max_prompt_tokens" in reason:
+        return "prompt_too_long"
+    if "truncated" in reason:
+        return "truncated"
+    return "other"
+
+
+def plot_skip_reason_counts(skipped_rows: Sequence[Dict],
+                            output_dir: str,
+                            dataset_order: Sequence[str]) -> str:
+    if not skipped_rows:
+        return ""
+    reasons = sorted({compact_skip_reason(row.get("reason", ""))
+                      for row in skipped_rows})
+    datasets = list(dataset_order)
+    labels = [f"{dataset}\n{reason}" for dataset in datasets for reason in reasons]
+    values = []
+    for dataset in datasets:
+        counts = Counter(
+            compact_skip_reason(row.get("reason", ""))
+            for row in skipped_rows
+            if row.get("dataset") == dataset
+        )
+        values.extend([counts.get(reason, 0) for reason in reasons])
+
+    fig, ax = plt.subplots(figsize=(max(8.5, 0.56 * len(labels)), 4.8))
+    ax.bar(range(len(labels)), values, color="#6B6ECF")
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=35, ha="right")
+    ax.set_title("Skipped Records by Reason")
+    ax.set_ylabel("Record Count")
+    ax.grid(axis="y", alpha=0.25)
+    fig.tight_layout()
+    path = os.path.join(output_dir, "evidence_skip_reasons.png")
+    fig.savefig(path, dpi=240, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
 def build_dataset_summary(sample_rows: Sequence[Dict],
                           skipped_rows: Sequence[Dict],
                           dataset_order: Sequence[str]) -> List[Dict]:
@@ -285,12 +333,14 @@ def build_dataset_summary(sample_rows: Sequence[Dict],
             row for row in skipped
             if row.get("reason") == "answer evidence not found in chunk tokens"
         ]
+        method_failures = [row for row in skipped if row.get("method")]
         summary.append({
             "dataset": dataset,
             "processed_samples": len(processed),
             "skipped_or_truncated_records": len(skipped),
             "truncated_samples": len(truncated),
             "no_evidence_samples": len(no_evidence),
+            "method_failure_records": len(method_failures),
         })
     return summary
 
@@ -355,7 +405,6 @@ def main() -> None:
     skipped_rows: List[Dict] = []
     truncate_long_samples = (
         args.max_prompt_tokens > 0
-        and args.truncate_long_samples
         and not args.skip_long_samples
     )
 
@@ -386,8 +435,11 @@ def main() -> None:
             if sample.query_source else []
         )
         scores_by_method: Dict[str, object] = {}
-        try:
-            for method in methods:
+        failed_methods = []
+        for method in methods:
+            if method in ("random", "chunk_head"):
+                continue
+            try:
                 if method in EMBEDDING_VARIANTS:
                     scores_by_method[method] = compute_embedding_scores(
                         model_runner=model_runner,
@@ -407,12 +459,31 @@ def main() -> None:
                         sample=sample,
                         variant=method,
                     )
-        except (RuntimeError, ValueError) as exc:
+            except (RuntimeError, ValueError) as exc:
+                clear_cuda_cache()
+                failed_methods.append(method)
+                skipped_rows.append({
+                    "dataset": sample.dataset,
+                    "sample_idx": sample.sample_idx,
+                    "sample_id": sample.sample_id,
+                    "method": method,
+                    "prompt_tokens": len(sample.prompt_token_ids),
+                    "chunk_tokens": len(sample.chunk_token_ids),
+                    "reason": str(exc),
+                })
+
+        usable_methods = [
+            method for method in methods
+            if method in ("random", "chunk_head") or method in scores_by_method
+        ]
+        if not usable_methods:
             skipped_rows.append({
                 "dataset": sample.dataset,
                 "sample_idx": sample.sample_idx,
                 "sample_id": sample.sample_id,
-                "reason": str(exc),
+                "prompt_tokens": len(sample.prompt_token_ids),
+                "chunk_tokens": len(sample.chunk_token_ids),
+                "reason": "no usable selector method",
             })
             continue
 
@@ -426,9 +497,10 @@ def main() -> None:
             "chunk_tokens": len(sample.chunk_token_ids),
             "evidence_tokens": len(evidence),
             "answers": " | ".join(sample.answers),
+            "failed_methods": ",".join(failed_methods),
         })
         for ratio in ratios:
-            for method in methods:
+            for method in usable_methods:
                 selected = select_for_method(
                     method=method,
                     ratio=ratio,
@@ -478,6 +550,9 @@ def main() -> None:
         bar_path = plot_bar_at_ratio(aggregate, output_dir, args.bar_ratio)
         if bar_path:
             figure_paths.append(bar_path)
+    skip_reason_path = plot_skip_reason_counts(skipped_rows, output_dir, datasets)
+    if skip_reason_path:
+        figure_paths.append(skip_reason_path)
 
     manifest_path = os.path.join(output_dir, "evidence_coverage_manifest.json")
     write_json(manifest_path, {
