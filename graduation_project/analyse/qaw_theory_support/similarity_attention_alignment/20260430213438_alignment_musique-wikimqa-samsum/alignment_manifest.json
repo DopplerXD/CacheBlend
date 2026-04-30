@@ -1,0 +1,48 @@
+{
+  "model": "/root/models/Yi-6B",
+  "datasets": [
+    "musique",
+    "wikimqa",
+    "samsum"
+  ],
+  "base_output_dir": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/similarity_attention_alignment",
+  "output_dir": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/similarity_attention_alignment/20260430213438_alignment_musique-wikimqa-samsum",
+  "count_per_dataset": 100,
+  "similarity_variant": "embedding_max",
+  "attention_layer": -1,
+  "max_prompt_tokens": 4096,
+  "truncate_long_samples": true,
+  "processed_samples": 3,
+  "skipped_samples": 580,
+  "dataset_summary": [
+    {
+      "dataset": "musique",
+      "processed_samples": 0,
+      "skipped_or_truncated_records": 200,
+      "truncated_samples": 0
+    },
+    {
+      "dataset": "wikimqa",
+      "processed_samples": 0,
+      "skipped_or_truncated_records": 200,
+      "truncated_samples": 0
+    },
+    {
+      "dataset": "samsum",
+      "processed_samples": 3,
+      "skipped_or_truncated_records": 180,
+      "truncated_samples": 0
+    }
+  ],
+  "sample_csv": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/similarity_attention_alignment/20260430213438_alignment_musique-wikimqa-samsum/sample_similarity_attention.csv",
+  "overlap_csv": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/similarity_attention_alignment/20260430213438_alignment_musique-wikimqa-samsum/topk_overlap_by_sample.csv",
+  "skipped_csv": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/similarity_attention_alignment/20260430213438_alignment_musique-wikimqa-samsum/skipped_samples.csv",
+  "dataset_summary_csv": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/similarity_attention_alignment/20260430213438_alignment_musique-wikimqa-samsum/dataset_summary.csv",
+  "figures": [
+    "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/similarity_attention_alignment/20260430213438_alignment_musique-wikimqa-samsum/similarity_attention_topk_overlap.png",
+    "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/similarity_attention_alignment/20260430213438_alignment_musique-wikimqa-samsum/similarity_attention_topk_overlap_average.png",
+    "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/similarity_attention_alignment/20260430213438_alignment_musique-wikimqa-samsum/similarity_attention_spearman_boxplot_musique.png",
+    "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/similarity_attention_alignment/20260430213438_alignment_musique-wikimqa-samsum/similarity_attention_spearman_boxplot_wikimqa.png",
+    "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/similarity_attention_alignment/20260430213438_alignment_musique-wikimqa-samsum/similarity_attention_spearman_boxplot_samsum.png"
+  ]
+}

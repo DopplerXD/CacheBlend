@@ -1,0 +1,4 @@
+chunk_tokens,dataset,original_prompt_tokens,pearson,prompt_tokens,query_tokens,sample_id,sample_idx,similarity_variant,spearman,was_truncated
+1755,samsum,2086,0.13703526556491852,2086,309,c5bfa03464d2c2b15aae0ce2028366bc2ba856e115dafe6d,42,embedding_max,0.18008819222450256,False
+1910,samsum,2012,0.13376760482788086,2012,80,7a85937d2e1ac3215ab2518db4dc4d633fbb81f042776780,49,embedding_max,0.1479983776807785,False
+1563,samsum,1651,0.13571226596832275,1651,66,cea67f9e6218dd3c850accfd096dfa916a46025d2c824072,70,embedding_max,0.20228241384029388,False

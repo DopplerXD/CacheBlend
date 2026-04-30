@@ -1,0 +1,113 @@
+answers,chunk_tokens,dataset,evidence_tokens,failed_methods,original_prompt_tokens,prompt_tokens,sample_id,sample_idx,was_truncated
+Exeter College,4006,musique,26,query_attention,6420,4096,1,1,True
+Charles County,4009,musique,65,query_attention,6210,4096,2,2,True
+McDonald County,4011,musique,15,query_attention,6202,4096,4,4,True
+Emilia Galotti,4004,musique,70,query_attention,6254,4096,6,6,True
+conga,4005,musique,24,query_attention,6115,4096,7,7,True
+"Sir Francis Baring, 1st Baronet",4000,musique,46,query_attention,6390,4096,9,9,True
+national cycling route network,4002,musique,70,query_attention,6303,4096,12,12,True
+Johanne Luise Heiberg,4005,musique,57,query_attention,6463,4096,13,13,True
+Peace Corps,4010,musique,72,query_attention,5877,4096,14,14,True
+Van Horn,4006,musique,24,query_attention,6164,4096,15,15,True
+East Dorset,4007,musique,112,query_attention,6408,4096,16,16,True
+Columbia Records,4005,musique,56,query_attention,6335,4096,18,18,True
+Saint Sava,4004,musique,26,query_attention,6364,4096,19,19,True
+Pittsburgh Pirates,4009,musique,28,query_attention,6457,4096,20,20,True
+Amherst,4010,musique,13,query_attention,6475,4096,22,22,True
+Rohana Wijeweera,4004,musique,18,query_attention,6678,4096,23,23,True
+Hubbard County,4003,musique,39,query_attention,6344,4096,30,30,True
+Annapolis,4005,musique,48,query_attention,6202,4096,31,31,True
+Erick Sermon,4008,musique,52,query_attention,6251,4096,32,32,True
+Kenton County,4009,musique,28,query_attention,5809,4096,34,34,True
+Kingscliff,4003,musique,65,query_attention,6310,4096,35,35,True
+Nobel Prize in Literature,4008,musique,45,query_attention,6325,4096,39,39,True
+Peter Marc Jacobson,4000,musique,17,query_attention,6103,4096,43,43,True
+Larry Gagosian,4007,musique,32,query_attention,6090,4096,44,44,True
+From the 1950s to the 1970s,4005,musique,156,query_attention,6052,4096,45,45,True
+From the 1950s to the 1970s,4006,musique,78,query_attention,6232,4096,46,46,True
+From the 1950s to the 1970s,4003,musique,78,query_attention,6304,4096,47,47,True
+Natalie Albino,4010,musique,32,query_attention,6153,4096,49,49,True
+Natalie Albino,4007,musique,112,query_attention,6464,4096,50,50,True
+Natalie Albino,4007,musique,80,query_attention,6490,4096,52,52,True
+Mount Laurel Township,3992,musique,15,query_attention,5789,4096,54,54,True
+Scottish Parliament Building,3995,musique,60,query_attention,6152,4096,55,55,True
+Delaware River,3997,musique,78,query_attention,6532,4096,60,60,True
+ancient Egyptian religion,4005,musique,15,query_attention,5903,4096,61,61,True
+Lisbon District,4005,musique,14,query_attention,6447,4096,64,64,True
+Nazareth,4010,musique,23,query_attention,6037,4096,67,67,True
+central Atlantic Ocean,4001,musique,28,query_attention,6762,4096,68,68,True
+central Atlantic Ocean,4009,musique,14,query_attention,6299,4096,70,70,True
+University of Glasgow,4002,musique,15,query_attention,5738,4096,71,71,True
+University of Glasgow,4010,musique,45,query_attention,6286,4096,72,72,True
+University of Glasgow,4010,musique,60,query_attention,6281,4096,73,73,True
+International Tennis Federation,3999,musique,28,query_attention,7578,4096,74,74,True
+International Tennis Federation,4001,musique,42,query_attention,7441,4096,75,75,True
+International Tennis Federation,4002,musique,70,query_attention,7777,4096,76,76,True
+Starkville,4002,musique,24,query_attention,6217,4096,77,77,True
+Louis Chedid,4009,musique,75,query_attention,6111,4096,79,79,True
+Louis Chedid,4004,musique,15,query_attention,6430,4096,80,80,True
+Tatum O'Neal,4008,musique,32,query_attention,6173,4096,81,81,True
+Lana Wood,3999,musique,26,query_attention,6905,4096,82,82,True
+Lana Wood,3993,musique,26,query_attention,6500,4096,83,83,True
+Lana Wood,4005,musique,26,query_attention,6511,4096,84,84,True
+Hewlett Packard,3991,musique,180,query_attention,6230,4096,85,85,True
+Hewlett Packard,4004,musique,150,query_attention,6362,4096,86,86,True
+Hewlett Packard,3998,musique,210,query_attention,6236,4096,87,87,True
+Mido,4001,musique,48,query_attention,7282,4096,89,89,True
+Mido,4002,musique,60,query_attention,7022,4096,90,90,True
+Mido,4001,musique,36,query_attention,7333,4096,91,91,True
+Charles University,4005,musique,39,query_attention,6127,4096,92,92,True
+Charles University,4005,musique,65,query_attention,6215,4096,93,93,True
+Charles University,4008,musique,65,query_attention,6280,4096,94,94,True
+Lisa Rinna,4006,musique,30,query_attention,6054,4096,95,95,True
+1912,4008,musique,45,query_attention,6835,4096,97,97,True
+1912,4005,musique,75,query_attention,6281,4096,99,99,True
+Bell County,4011,musique,48,query_attention,6260,4096,100,100,True
+John the Baptist,4015,wikimqa,14,query_attention,6413,4096,2,2,True
+no,4007,wikimqa,97,query_attention,6323,4096,4,4,True
+1510,4004,wikimqa,15,query_attention,7189,4096,5,5,True
+Edward Watson,4014,wikimqa,127,query_attention,6687,4096,6,6,True
+16 September 1360,4005,wikimqa,20,query_attention,6803,4096,7,7,True
+Bob Jones University,4018,wikimqa,30,query_attention,6436,4096,10,10,True
+"Guy II, Count of Soissons",4014,wikimqa,36,query_attention,6304,4096,13,13,True
+26 April 1872,4017,wikimqa,20,query_attention,6777,4096,14,14,True
+America,4017,wikimqa,24,query_attention,6302,4096,15,15,True
+The Death Of Black King,4010,wikimqa,20,query_attention,6461,4096,17,17,True
+no,4000,wikimqa,22,query_attention,6382,4096,18,18,True
+no,4006,wikimqa,44,query_attention,5850,4096,19,19,True
+Hell Up In Harlem,4010,wikimqa,50,query_attention,6544,4096,23,23,True
+Cipriano Castro,4012,wikimqa,32,query_attention,6867,4096,24,24,True
+Monster On The Campus,4010,wikimqa,112,query_attention,6579,4096,25,25,True
+Jugband Blues,4012,wikimqa,103,query_attention,6411,4096,27,27,True
+"Archibald Acheson, 2nd Earl of Gosford",4008,wikimqa,62,query_attention,7384,4096,31,31,True
+Jean Paul Getty,4020,wikimqa,16,query_attention,6439,4096,32,32,True
+Wooden Crosses,4012,wikimqa,14,query_attention,6746,4096,35,35,True
+Above Rubies,4015,wikimqa,34,query_attention,6537,4096,36,36,True
+"Castlemaine, Victoria, Australia",4014,wikimqa,19,query_attention,6227,4096,38,38,True
+East Francia,4012,wikimqa,70,query_attention,6247,4096,41,41,True
+Henry Goes Arizona,4008,wikimqa,22,query_attention,6378,4096,42,42,True
+United Kingdom,4015,wikimqa,24,query_attention,6385,4096,43,43,True
+Buenos Aires,4003,wikimqa,28,query_attention,6481,4096,45,45,True
+"May 19, 1669",4010,wikimqa,20,query_attention,7442,4096,52,52,True
+Palencia,4007,wikimqa,12,query_attention,6661,4096,53,53,True
+Miley Naa Miley Hum,4009,wikimqa,24,query_attention,6278,4096,54,54,True
+Seven In The Sun,4010,wikimqa,32,query_attention,6284,4096,56,56,True
+Dr. Socrates,4012,wikimqa,65,query_attention,6404,4096,57,57,True
+Ruel Redinger,4016,wikimqa,14,query_attention,6227,4096,59,59,True
+Alexandra Kolosova,4014,wikimqa,17,query_attention,6586,4096,60,60,True
+Jessi Colter,4012,wikimqa,45,query_attention,6337,4096,61,61,True
+William Pooley,4016,wikimqa,19,query_attention,6323,4096,63,63,True
+Sweden,4019,wikimqa,13,query_attention,6358,4096,64,64,True
+Madrid,4012,wikimqa,57,query_attention,6546,4096,67,67,True
+Dubai,4012,wikimqa,24,query_attention,6150,4096,71,71,True
+Prince Albert of Prussia,4009,wikimqa,32,query_attention,7275,4096,73,73,True
+"Sir Paul Gore, 1st Baronet",4012,wikimqa,44,query_attention,7306,4096,76,76,True
+The Drover'S Sweetheart,4009,wikimqa,24,query_attention,6608,4096,80,80,True
+Det Sande Ansigt,4010,wikimqa,22,query_attention,6630,4096,82,82,True
+Revolt Of The Praetorians,4008,wikimqa,36,query_attention,6277,4096,85,85,True
+poisoning,4012,wikimqa,11,query_attention,6090,4096,87,87,True
+America,4011,wikimqa,12,query_attention,6464,4096,88,88,True
+Kingdom of Hawaii,4016,wikimqa,15,query_attention,6060,4096,89,89,True
+Vasantha Raagam,4011,wikimqa,22,query_attention,6083,4096,91,91,True
+"John I, Duke of Bourbon",4016,wikimqa,18,query_attention,6724,4096,93,93,True
+Washington,4014,wikimqa,12,query_attention,6479,4096,98,98,True

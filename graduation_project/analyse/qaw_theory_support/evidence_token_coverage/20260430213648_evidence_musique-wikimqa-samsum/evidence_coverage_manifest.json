@@ -1,0 +1,77 @@
+{
+  "model": "/root/models/Yi-6B",
+  "datasets": [
+    "musique",
+    "wikimqa",
+    "samsum"
+  ],
+  "base_output_dir": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage",
+  "output_dir": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/20260430213648_evidence_musique-wikimqa-samsum",
+  "count_per_dataset": 100,
+  "methods": [
+    "random",
+    "chunk_head",
+    "embedding_max",
+    "embedding_mean_query",
+    "embedding_last_query",
+    "query_attention"
+  ],
+  "ratios": [
+    0.0,
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9,
+    1.0
+  ],
+  "evidence_window": 5,
+  "attention_layer": -1,
+  "max_prompt_tokens": 4096,
+  "truncate_long_samples": true,
+  "processed_samples": 112,
+  "skipped_samples": 583,
+  "dataset_summary": [
+    {
+      "dataset": "musique",
+      "processed_samples": 64,
+      "skipped_or_truncated_records": 200,
+      "truncated_samples": 64,
+      "no_evidence_samples": 36,
+      "method_failure_records": 64
+    },
+    {
+      "dataset": "wikimqa",
+      "processed_samples": 48,
+      "skipped_or_truncated_records": 200,
+      "truncated_samples": 48,
+      "no_evidence_samples": 52,
+      "method_failure_records": 48
+    },
+    {
+      "dataset": "samsum",
+      "processed_samples": 0,
+      "skipped_or_truncated_records": 183,
+      "truncated_samples": 0,
+      "no_evidence_samples": 100,
+      "method_failure_records": 0
+    }
+  ],
+  "coverage_csv": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/20260430213648_evidence_musique-wikimqa-samsum/evidence_coverage_by_sample.csv",
+  "aggregate_csv": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/20260430213648_evidence_musique-wikimqa-samsum/evidence_coverage_summary.csv",
+  "sample_csv": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/20260430213648_evidence_musique-wikimqa-samsum/evidence_samples.csv",
+  "skipped_csv": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/20260430213648_evidence_musique-wikimqa-samsum/skipped_samples.csv",
+  "dataset_summary_csv": "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/20260430213648_evidence_musique-wikimqa-samsum/dataset_summary.csv",
+  "figures": [
+    "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/20260430213648_evidence_musique-wikimqa-samsum/evidence_recall_curve.png",
+    "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/20260430213648_evidence_musique-wikimqa-samsum/evidence_hit_curve.png",
+    "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/20260430213648_evidence_musique-wikimqa-samsum/evidence_recall_heatmap_musique.png",
+    "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/20260430213648_evidence_musique-wikimqa-samsum/evidence_recall_heatmap_wikimqa.png",
+    "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/20260430213648_evidence_musique-wikimqa-samsum/evidence_recall_ratio_0.60.png",
+    "/root/github/CacheBlend/graduation_project/analyse/qaw_theory_support/evidence_token_coverage/20260430213648_evidence_musique-wikimqa-samsum/evidence_skip_reasons.png"
+  ]
+}
