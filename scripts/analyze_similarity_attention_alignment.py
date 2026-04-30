@@ -45,9 +45,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--similarity-variant",
                         choices=EMBEDDING_VARIANTS,
                         default="embedding_max")
-    parser.add_argument("--ratios", default="0.05,0.1,0.2,0.3,0.5")
+    parser.add_argument(
+        "--ratios",
+        default="0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0",
+    )
     parser.add_argument("--attention-layer", type=int, default=-1)
     parser.add_argument("--max-prompt-tokens", type=int, default=4096)
+    parser.add_argument(
+        "--skip-long-samples",
+        action="store_true",
+        help=(
+            "skip samples longer than --max-prompt-tokens; by default long "
+            "samples are truncated for lightweight analysis"
+        ),
+    )
     parser.add_argument(
         "--output-dir",
         default=os.path.join(
@@ -70,14 +81,21 @@ def mean(values: List[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
-def plot_overlap(overlap_rows: List[Dict], output_dir: str) -> str:
+def build_overlap_groups(overlap_rows: List[Dict]) -> Dict[Tuple[str, float], List[float]]:
     grouped: Dict[Tuple[str, float], List[float]] = defaultdict(list)
     for row in overlap_rows:
         if row["topk_overlap"] != "":
             grouped[(row["dataset"], float(row["ratio"]))].append(
                 float(row["topk_overlap"])
             )
-    datasets = sorted({key[0] for key in grouped})
+    return grouped
+
+
+def plot_overlap(overlap_rows: List[Dict], output_dir: str,
+                 dataset_order: List[str]) -> str:
+    grouped = build_overlap_groups(overlap_rows)
+    datasets = [dataset for dataset in dataset_order
+                if any(key[0] == dataset for key in grouped)]
     ratios = sorted({key[1] for key in grouped})
 
     fig, ax = plt.subplots(figsize=(8.5, 5.2))
@@ -97,24 +115,85 @@ def plot_overlap(overlap_rows: List[Dict], output_dir: str) -> str:
     return path
 
 
-def plot_spearman(sample_rows: List[Dict], output_dir: str) -> str:
-    datasets = sorted({row["dataset"] for row in sample_rows})
-    values = [
-        [float(row["spearman"]) for row in sample_rows
-         if row["dataset"] == dataset and row["spearman"] != ""]
-        for dataset in datasets
-    ]
+def plot_average_overlap(overlap_rows: List[Dict], output_dir: str,
+                         dataset_order: List[str]) -> str:
+    grouped = build_overlap_groups(overlap_rows)
+    ratios = sorted({key[1] for key in grouped})
+    mean_values = []
+    for ratio in ratios:
+        dataset_means = []
+        for dataset in dataset_order:
+            values = grouped.get((dataset, ratio), [])
+            if values:
+                dataset_means.append(mean(values))
+        mean_values.append(mean(dataset_means))
+
     fig, ax = plt.subplots(figsize=(8.5, 5.2))
-    ax.boxplot(values, labels=datasets, showmeans=True)
-    ax.set_title("Similarity-Attention Spearman Correlation")
-    ax.set_xlabel("Dataset")
-    ax.set_ylabel("Spearman")
-    ax.grid(axis="y", alpha=0.25)
+    ax.plot(ratios, mean_values, marker="o", linewidth=2.0, color="#222222")
+    ax.set_title("Average Similarity-Attention Top-K Overlap")
+    ax.set_xlabel("Top-K Ratio")
+    ax.set_ylabel("Mean Top-K Overlap across Datasets")
+    ax.set_ylim(0, 1)
+    ax.grid(alpha=0.25)
     fig.tight_layout()
-    path = os.path.join(output_dir, "similarity_attention_spearman_boxplot.png")
+    path = os.path.join(output_dir, "similarity_attention_topk_overlap_average.png")
     fig.savefig(path, dpi=240, bbox_inches="tight")
     plt.close(fig)
     return path
+
+
+def plot_spearman_by_dataset(sample_rows: List[Dict],
+                             output_dir: str,
+                             dataset_order: List[str]) -> List[str]:
+    paths = []
+    for dataset in dataset_order:
+        values = [
+            float(row["spearman"]) for row in sample_rows
+            if row["dataset"] == dataset and row["spearman"] != ""
+        ]
+        fig, ax = plt.subplots(figsize=(5.4, 5.2))
+        if values:
+            ax.boxplot([values], labels=[dataset], showmeans=True)
+        else:
+            ax.set_xticks([1])
+            ax.set_xticklabels([dataset])
+            ax.text(
+                0.5,
+                0.5,
+                "No usable samples",
+                ha="center",
+                va="center",
+                transform=ax.transAxes,
+            )
+        ax.set_title(f"{dataset}: Similarity-Attention Spearman")
+        ax.set_xlabel("Dataset")
+        ax.set_ylabel("Spearman")
+        ax.grid(axis="y", alpha=0.25)
+        fig.tight_layout()
+        path = os.path.join(
+            output_dir,
+            f"similarity_attention_spearman_boxplot_{dataset}.png",
+        )
+        fig.savefig(path, dpi=240, bbox_inches="tight")
+        plt.close(fig)
+        paths.append(path)
+    return paths
+
+
+def build_dataset_summary(sample_rows: List[Dict], skipped_rows: List[Dict],
+                          dataset_order: List[str]) -> List[Dict]:
+    summary = []
+    for dataset in dataset_order:
+        processed = [row for row in sample_rows if row["dataset"] == dataset]
+        skipped = [row for row in skipped_rows if row["dataset"] == dataset]
+        truncated = [row for row in processed if row.get("was_truncated")]
+        summary.append({
+            "dataset": dataset,
+            "processed_samples": len(processed),
+            "skipped_or_truncated_records": len(skipped),
+            "truncated_samples": len(truncated),
+        })
+    return summary
 
 
 def main() -> None:
@@ -141,6 +220,7 @@ def main() -> None:
         count=args.count,
         max_prompt_tokens=args.max_prompt_tokens,
         skipped_rows=skipped_rows,
+        truncate_long_samples=not args.skip_long_samples,
     ):
         query_token_ids = (
             model_runner.encode_no_special(sample.query_source)
@@ -174,6 +254,8 @@ def main() -> None:
             "sample_idx": sample.sample_idx,
             "sample_id": sample.sample_id,
             "prompt_tokens": len(sample.prompt_token_ids),
+            "original_prompt_tokens": sample.original_prompt_tokens,
+            "was_truncated": sample.was_truncated,
             "chunk_tokens": len(sample.chunk_token_ids),
             "query_tokens": len(query_token_ids),
             "similarity_variant": args.similarity_variant,
@@ -194,15 +276,19 @@ def main() -> None:
     sample_csv = os.path.join(output_dir, "sample_similarity_attention.csv")
     overlap_csv = os.path.join(output_dir, "topk_overlap_by_sample.csv")
     skipped_csv = os.path.join(output_dir, "skipped_samples.csv")
+    dataset_summary = build_dataset_summary(sample_rows, skipped_rows, datasets)
+    dataset_summary_csv = os.path.join(output_dir, "dataset_summary.csv")
     write_csv(sample_csv, sample_rows)
     write_csv(overlap_csv, overlap_rows)
     write_csv(skipped_csv, skipped_rows)
+    write_csv(dataset_summary_csv, dataset_summary)
 
     figure_paths = []
     if overlap_rows:
-        figure_paths.append(plot_overlap(overlap_rows, output_dir))
+        figure_paths.append(plot_overlap(overlap_rows, output_dir, datasets))
+        figure_paths.append(plot_average_overlap(overlap_rows, output_dir, datasets))
     if sample_rows:
-        figure_paths.append(plot_spearman(sample_rows, output_dir))
+        figure_paths.extend(plot_spearman_by_dataset(sample_rows, output_dir, datasets))
 
     summary = {
         "model": cfg.model_name,
@@ -213,11 +299,14 @@ def main() -> None:
         "similarity_variant": args.similarity_variant,
         "attention_layer": args.attention_layer,
         "max_prompt_tokens": args.max_prompt_tokens,
+        "truncate_long_samples": not args.skip_long_samples,
         "processed_samples": len(sample_rows),
         "skipped_samples": len(skipped_rows),
+        "dataset_summary": dataset_summary,
         "sample_csv": sample_csv,
         "overlap_csv": overlap_csv,
         "skipped_csv": skipped_csv,
+        "dataset_summary_csv": dataset_summary_csv,
         "figures": figure_paths,
     }
     manifest = os.path.join(output_dir, "alignment_manifest.json")

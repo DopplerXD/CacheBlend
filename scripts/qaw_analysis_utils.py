@@ -9,8 +9,8 @@ import os
 import random
 import re
 import sys
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import torch
@@ -53,6 +53,8 @@ class TokenizedSample:
     prompt_token_ids: List[int]
     chunk_global_positions: List[int]
     query_global_positions: List[int]
+    was_truncated: bool = False
+    original_prompt_tokens: int = 0
 
 
 def parse_datasets(raw_value: str) -> List[str]:
@@ -68,7 +70,8 @@ def parse_ratios(raw_value: str) -> List[float]:
     for ratio in ratios:
         if ratio < 0 or ratio > 1:
             raise ValueError("ratios must be within [0, 1]")
-    return ratios or [0.05, 0.1, 0.2, 0.3, 0.5]
+    return ratios or [0.0, 0.1, 0.2, 0.3, 0.4, 0.5,
+                      0.6, 0.7, 0.8, 0.9, 1.0]
 
 
 def ensure_dir(path: str) -> None:
@@ -84,7 +87,8 @@ def make_run_output_dir(base_output_dir: str,
         ensure_dir(base_output_dir)
         return base_output_dir
     dataset_slug = "-".join(datasets) if datasets else "datasets"
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    utc8 = timezone(timedelta(hours=8))
+    timestamp = datetime.now(timezone.utc).astimezone(utc8).strftime("%Y%m%d%H%M%S")
     run_dir = os.path.join(base_output_dir, f"{timestamp}_{run_name}_{dataset_slug}")
     ensure_dir(run_dir)
     return run_dir
@@ -216,6 +220,57 @@ def build_tokenized_sample(
         prompt_token_ids=prompt_token_ids,
         chunk_global_positions=chunk_global_positions,
         query_global_positions=query_positions,
+        was_truncated=False,
+        original_prompt_tokens=len(prompt_token_ids),
+    )
+
+
+def truncate_sample_to_prompt_limit(
+    model_runner: HFModelRunner,
+    sample: TokenizedSample,
+    max_prompt_tokens: int,
+) -> Optional[TokenizedSample]:
+    """Shorten chunk tokens while preserving prefix and suffix/query tokens."""
+    if max_prompt_tokens <= 0 or len(sample.prompt_token_ids) <= max_prompt_tokens:
+        return sample
+
+    available_chunk_tokens = (
+        max_prompt_tokens - len(sample.prefix_token_ids) - len(sample.suffix_token_ids)
+    )
+    if available_chunk_tokens <= 0:
+        return None
+
+    truncated_chunk_token_ids = sample.chunk_token_ids[:available_chunk_tokens]
+    prompt_token_ids = (
+        sample.prefix_token_ids + truncated_chunk_token_ids + sample.suffix_token_ids
+    )
+    chunk_start = len(sample.prefix_token_ids)
+    chunk_global_positions = list(
+        range(chunk_start, chunk_start + len(truncated_chunk_token_ids))
+    )
+
+    query_token_ids = (
+        model_runner.encode_no_special(sample.query_source)
+        if sample.query_source else []
+    )
+    query_positions = find_subsequence_positions(prompt_token_ids, query_token_ids)
+    if not query_positions and sample.suffix_token_ids:
+        query_count = min(len(query_token_ids), len(sample.suffix_token_ids))
+        suffix_start = len(sample.prefix_token_ids) + len(truncated_chunk_token_ids)
+        query_positions = list(
+            range(
+                suffix_start + max(0, len(sample.suffix_token_ids) - query_count),
+                suffix_start + len(sample.suffix_token_ids),
+            )
+        )
+
+    return replace(
+        sample,
+        chunk_token_ids=truncated_chunk_token_ids,
+        prompt_token_ids=prompt_token_ids,
+        chunk_global_positions=chunk_global_positions,
+        query_global_positions=query_positions,
+        was_truncated=True,
     )
 
 
@@ -362,6 +417,8 @@ def topk_indices(scores: torch.Tensor, ratio: float) -> List[int]:
 
 
 def topk_overlap(left_scores: torch.Tensor, right_scores: torch.Tensor, ratio: float) -> Optional[float]:
+    if ratio <= 0:
+        return 0.0
     left = set(topk_indices(left_scores, ratio))
     right = set(topk_indices(right_scores, ratio))
     if not left or not right:
@@ -450,6 +507,7 @@ def iter_tokenized_samples(
     count: int,
     max_prompt_tokens: int,
     skipped_rows: Optional[List[Dict[str, Any]]] = None,
+    truncate_long_samples: bool = False,
 ):
     for dataset in datasets:
         spec, examples = load_dataset(dataset)
@@ -465,15 +523,46 @@ def iter_tokenized_samples(
                 spec=spec,
             )
             if max_prompt_tokens > 0 and len(sample.prompt_token_ids) > max_prompt_tokens:
-                if skipped_rows is not None:
-                    skipped_rows.append({
-                        "dataset": dataset,
-                        "sample_idx": sample_idx,
-                        "sample_id": sample.sample_id,
-                        "prompt_tokens": len(sample.prompt_token_ids),
-                        "max_prompt_tokens": max_prompt_tokens,
-                        "reason": "prompt exceeds max_prompt_tokens",
-                    })
-                continue
+                if truncate_long_samples:
+                    truncated = truncate_sample_to_prompt_limit(
+                        model_runner=model_runner,
+                        sample=sample,
+                        max_prompt_tokens=max_prompt_tokens,
+                    )
+                    if truncated is not None:
+                        sample = truncated
+                    elif skipped_rows is not None:
+                        skipped_rows.append({
+                            "dataset": dataset,
+                            "sample_idx": sample_idx,
+                            "sample_id": sample.sample_id,
+                            "prompt_tokens": len(sample.prompt_token_ids),
+                            "max_prompt_tokens": max_prompt_tokens,
+                            "reason": "prefix and suffix exceed max_prompt_tokens",
+                        })
+                        continue
+                    else:
+                        continue
+                else:
+                    if skipped_rows is not None:
+                        skipped_rows.append({
+                            "dataset": dataset,
+                            "sample_idx": sample_idx,
+                            "sample_id": sample.sample_id,
+                            "prompt_tokens": len(sample.prompt_token_ids),
+                            "max_prompt_tokens": max_prompt_tokens,
+                            "reason": "prompt exceeds max_prompt_tokens",
+                        })
+                    continue
+            if sample.was_truncated and skipped_rows is not None:
+                skipped_rows.append({
+                    "dataset": dataset,
+                    "sample_idx": sample_idx,
+                    "sample_id": sample.sample_id,
+                    "prompt_tokens": sample.original_prompt_tokens,
+                    "max_prompt_tokens": max_prompt_tokens,
+                    "truncated_prompt_tokens": len(sample.prompt_token_ids),
+                    "reason": "prompt truncated to max_prompt_tokens",
+                })
             processed += 1
             yield spec, sample
