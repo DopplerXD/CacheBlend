@@ -10,6 +10,7 @@ import random
 import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import torch
@@ -72,6 +73,21 @@ def parse_ratios(raw_value: str) -> List[float]:
 
 def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
+
+
+def make_run_output_dir(base_output_dir: str,
+                        run_name: str,
+                        datasets: Sequence[str],
+                        no_run_subdir: bool = False) -> str:
+    """Create a per-run output directory to avoid overwriting prior datasets."""
+    if no_run_subdir:
+        ensure_dir(base_output_dir)
+        return base_output_dir
+    dataset_slug = "-".join(datasets) if datasets else "datasets"
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    run_dir = os.path.join(base_output_dir, f"{timestamp}_{run_name}_{dataset_slug}")
+    ensure_dir(run_dir)
+    return run_dir
 
 
 def build_model_runner(model_name: str, attn_implementation: str) -> Tuple[RuntimeConfig, HFModelRunner]:
@@ -433,6 +449,7 @@ def iter_tokenized_samples(
     datasets: Sequence[str],
     count: int,
     max_prompt_tokens: int,
+    skipped_rows: Optional[List[Dict[str, Any]]] = None,
 ):
     for dataset in datasets:
         spec, examples = load_dataset(dataset)
@@ -448,6 +465,15 @@ def iter_tokenized_samples(
                 spec=spec,
             )
             if max_prompt_tokens > 0 and len(sample.prompt_token_ids) > max_prompt_tokens:
+                if skipped_rows is not None:
+                    skipped_rows.append({
+                        "dataset": dataset,
+                        "sample_idx": sample_idx,
+                        "sample_id": sample.sample_id,
+                        "prompt_tokens": len(sample.prompt_token_ids),
+                        "max_prompt_tokens": max_prompt_tokens,
+                        "reason": "prompt exceeds max_prompt_tokens",
+                    })
                 continue
             processed += 1
             yield spec, sample

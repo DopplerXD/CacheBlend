@@ -18,8 +18,8 @@ from qaw_analysis_utils import (
     build_model_runner,
     compute_embedding_scores,
     compute_query_attention_scores,
-    ensure_dir,
     iter_tokenized_samples,
+    make_run_output_dir,
     parse_datasets,
     parse_ratios,
     pearson_corr,
@@ -57,6 +57,11 @@ def parse_args() -> argparse.Namespace:
             "qaw_theory_support",
             "similarity_attention_alignment",
         ),
+    )
+    parser.add_argument(
+        "--no-run-subdir",
+        action="store_true",
+        help="write directly into --output-dir; default creates a timestamped run subdirectory",
     )
     return parser.parse_args()
 
@@ -116,7 +121,13 @@ def main() -> None:
     args = parse_args()
     datasets = parse_datasets(args.datasets)
     ratios = parse_ratios(args.ratios)
-    ensure_dir(args.output_dir)
+    base_output_dir = args.output_dir
+    output_dir = make_run_output_dir(
+        base_output_dir=args.output_dir,
+        run_name="alignment",
+        datasets=datasets,
+        no_run_subdir=args.no_run_subdir,
+    )
 
     # Attention weights are needed here; eager is more reliable than SDPA/FlashAttention.
     cfg, model_runner = build_model_runner(args.model_name, attn_implementation="eager")
@@ -129,6 +140,7 @@ def main() -> None:
         datasets=datasets,
         count=args.count,
         max_prompt_tokens=args.max_prompt_tokens,
+        skipped_rows=skipped_rows,
     ):
         query_token_ids = (
             model_runner.encode_no_special(sample.query_source)
@@ -179,22 +191,24 @@ def main() -> None:
                 "topk_overlap": "" if overlap is None else overlap,
             })
 
-    sample_csv = os.path.join(args.output_dir, "sample_similarity_attention.csv")
-    overlap_csv = os.path.join(args.output_dir, "topk_overlap_by_sample.csv")
-    skipped_csv = os.path.join(args.output_dir, "skipped_samples.csv")
+    sample_csv = os.path.join(output_dir, "sample_similarity_attention.csv")
+    overlap_csv = os.path.join(output_dir, "topk_overlap_by_sample.csv")
+    skipped_csv = os.path.join(output_dir, "skipped_samples.csv")
     write_csv(sample_csv, sample_rows)
     write_csv(overlap_csv, overlap_rows)
     write_csv(skipped_csv, skipped_rows)
 
     figure_paths = []
     if overlap_rows:
-        figure_paths.append(plot_overlap(overlap_rows, args.output_dir))
+        figure_paths.append(plot_overlap(overlap_rows, output_dir))
     if sample_rows:
-        figure_paths.append(plot_spearman(sample_rows, args.output_dir))
+        figure_paths.append(plot_spearman(sample_rows, output_dir))
 
     summary = {
         "model": cfg.model_name,
         "datasets": datasets,
+        "base_output_dir": base_output_dir,
+        "output_dir": output_dir,
         "count_per_dataset": args.count,
         "similarity_variant": args.similarity_variant,
         "attention_layer": args.attention_layer,
@@ -206,7 +220,7 @@ def main() -> None:
         "skipped_csv": skipped_csv,
         "figures": figure_paths,
     }
-    manifest = os.path.join(args.output_dir, "alignment_manifest.json")
+    manifest = os.path.join(output_dir, "alignment_manifest.json")
     write_json(manifest, summary)
     print(f"saved manifest: {manifest}")
 

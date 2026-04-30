@@ -22,9 +22,9 @@ from qaw_analysis_utils import (
     compute_embedding_scores,
     compute_hidden_scores,
     compute_query_attention_scores,
-    ensure_dir,
     evidence_metrics,
     iter_tokenized_samples,
+    make_run_output_dir,
     parse_datasets,
     parse_ratios,
     random_indices,
@@ -71,6 +71,11 @@ def parse_args() -> argparse.Namespace:
             "qaw_theory_support",
             "evidence_token_coverage",
         ),
+    )
+    parser.add_argument(
+        "--no-run-subdir",
+        action="store_true",
+        help="write directly into --output-dir; default creates a timestamped run subdirectory",
     )
     return parser.parse_args()
 
@@ -192,7 +197,13 @@ def main() -> None:
     datasets = parse_datasets(args.datasets)
     ratios = parse_ratios(args.ratios)
     methods = parse_methods(args.methods)
-    ensure_dir(args.output_dir)
+    base_output_dir = args.output_dir
+    output_dir = make_run_output_dir(
+        base_output_dir=args.output_dir,
+        run_name="evidence",
+        datasets=datasets,
+        no_run_subdir=args.no_run_subdir,
+    )
 
     needs_attention = "query_attention" in methods
     attn_impl = "eager" if needs_attention else "auto"
@@ -206,6 +217,7 @@ def main() -> None:
         datasets=datasets,
         count=args.count,
         max_prompt_tokens=args.max_prompt_tokens,
+        skipped_rows=skipped_rows,
     ):
         evidence = answer_evidence_indices(
             model_runner=model_runner,
@@ -289,10 +301,10 @@ def main() -> None:
                 })
 
     aggregate = aggregate_rows(coverage_rows)
-    coverage_csv = os.path.join(args.output_dir, "evidence_coverage_by_sample.csv")
-    aggregate_csv = os.path.join(args.output_dir, "evidence_coverage_summary.csv")
-    sample_csv = os.path.join(args.output_dir, "evidence_samples.csv")
-    skipped_csv = os.path.join(args.output_dir, "skipped_samples.csv")
+    coverage_csv = os.path.join(output_dir, "evidence_coverage_by_sample.csv")
+    aggregate_csv = os.path.join(output_dir, "evidence_coverage_summary.csv")
+    sample_csv = os.path.join(output_dir, "evidence_samples.csv")
+    skipped_csv = os.path.join(output_dir, "skipped_samples.csv")
     write_csv(coverage_csv, coverage_rows)
     write_csv(aggregate_csv, aggregate)
     write_csv(sample_csv, sample_rows)
@@ -300,15 +312,17 @@ def main() -> None:
 
     figure_paths = []
     if aggregate:
-        figure_paths.append(plot_recall_curve(aggregate, args.output_dir))
-        bar_path = plot_bar_at_ratio(aggregate, args.output_dir, args.bar_ratio)
+        figure_paths.append(plot_recall_curve(aggregate, output_dir))
+        bar_path = plot_bar_at_ratio(aggregate, output_dir, args.bar_ratio)
         if bar_path:
             figure_paths.append(bar_path)
 
-    manifest_path = os.path.join(args.output_dir, "evidence_coverage_manifest.json")
+    manifest_path = os.path.join(output_dir, "evidence_coverage_manifest.json")
     write_json(manifest_path, {
         "model": cfg.model_name,
         "datasets": datasets,
+        "base_output_dir": base_output_dir,
+        "output_dir": output_dir,
         "count_per_dataset": args.count,
         "methods": methods,
         "ratios": ratios,
